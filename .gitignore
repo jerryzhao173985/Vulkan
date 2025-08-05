@@ -1,0 +1,47 @@
+# Build artifacts
+build/
+build-*/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+
+# Other repos that aren't submodules
+ComputeLibrary/
+ML-examples/
+MoltenVK/
+dependencies/
+ml-sdk-*/
+
+# Status files
+.push_status
