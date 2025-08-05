@@ -1,0 +1,24 @@
+[submodule "ai-ml-sdk-manifest"]
+	path = ai-ml-sdk-manifest
+	url = https://github.com/jerryzhao173985/ai-ml-sdk-manifest.git
+	branch = main
+[submodule "ai-ml-sdk-for-vulkan"]
+	path = ai-ml-sdk-for-vulkan
+	url = https://github.com/jerryzhao173985/ai-ml-sdk-for-vulkan.git
+	branch = main
+[submodule "ai-ml-sdk-model-converter"]
+	path = ai-ml-sdk-model-converter
+	url = https://github.com/jerryzhao173985/ai-ml-sdk-model-converter.git
+	branch = main
+[submodule "ai-ml-sdk-scenario-runner"]
+	path = ai-ml-sdk-scenario-runner
+	url = https://github.com/jerryzhao173985/ai-ml-sdk-scenario-runner.git
+	branch = main
+[submodule "ai-ml-sdk-vgf-library"]
+	path = ai-ml-sdk-vgf-library
+	url = https://github.com/jerryzhao173985/ai-ml-sdk-vgf-library.git
+	branch = main
+[submodule "ai-ml-emulation-layer-for-vulkan"]
+	path = ai-ml-emulation-layer-for-vulkan
+	url = https://github.com/jerryzhao173985/ai-ml-emulation-layer-for-vulkan.git
+	branch = main
