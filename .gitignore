@@ -44,4 +44,5 @@ dependencies/
 ml-sdk-*/
 
 # Status files
-.push_status
+.push_statusai-ml-emulation-layer-for-vulkan/build-complete
+ai-ml-sdk-for-vulkan/build-complete

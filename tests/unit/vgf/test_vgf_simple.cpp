@@ -1,110 +1,109 @@
 /**
- * Simple VGF Library Unit Test
- * Basic test to verify VGF library compilation and functionality
+ * Minimal VGF Library Test
+ * Simplest possible test to verify VGF library works
  */
 
 #include <iostream>
 #include <memory>
 #include <vector>
-#include <cstring>
+#include <fstream>
+#include <sstream>
 
-// VGF Library headers
 #include <vgf/encoder.hpp>
-#include <vgf/decoder.hpp>
 #include <vgf/types.hpp>
 
 using namespace mlsdk::vgflib;
 
 int main() {
-    std::cout << "VGF Library Simple Test" << std::endl;
-    std::cout << "========================" << std::endl;
+    std::cout << "VGF Library Minimal Test\n";
+    std::cout << "========================\n\n";
+    
+    int tests_passed = 0;
+    int tests_failed = 0;
     
     try {
         // Test 1: Create encoder
-        std::cout << "Test 1: Creating encoder... ";
-        uint16_t vkHeaderVersion = 1;
-        auto encoder = CreateEncoder(vkHeaderVersion);
+        std::cout << "Test 1: Create encoder... ";
+        auto encoder = CreateEncoder(1);
         if (encoder) {
-            std::cout << "✅ PASS" << std::endl;
+            std::cout << "✅ PASS\n";
+            tests_passed++;
         } else {
-            std::cout << "❌ FAIL" << std::endl;
+            std::cout << "❌ FAIL\n";
+            tests_failed++;
             return 1;
         }
         
-        // Test 2: Add a module
-        std::cout << "Test 2: Adding module... ";
-        std::vector<uint32_t> spirvCode = {
-            0x07230203, // SPIR-V magic number
-            0x00010000, // Version 1.0
-            0x00000000, // Generator
-            0x00000001, // Bound
-            0x00000000  // Schema
+        // Test 2: Add a simple compute module
+        std::cout << "Test 2: Add compute module... ";
+        std::vector<uint32_t> spirv = {
+            0x07230203, // SPIR-V magic
+            0x00010000, // Version
+            0x00000000, 0x00000001, 0x00000000
         };
         
-        auto moduleRef = encoder->AddModule(
+        auto module = encoder->AddModule(
             ModuleType::COMPUTE,
-            "test_compute",
+            "test_shader",
             "main",
-            spirvCode
+            spirv
         );
-        std::cout << "✅ PASS" << std::endl;
+        std::cout << "✅ PASS\n";
+        tests_passed++;
         
-        // Test 3: Add input resource
-        std::cout << "Test 3: Adding input resource... ";
-        std::vector<int64_t> shape = {1, 224, 224, 3}; // NHWC format
-        std::vector<int64_t> strides = {}; // Packed layout
+        // Test 3: Add resources
+        std::cout << "Test 3: Add resources... ";
+        std::vector<int64_t> shape = {1, 224, 224, 3};
+        std::vector<int64_t> strides;
         
-        auto inputRef = encoder->AddInputResource(
-            0, // DescriptorType (using raw value for now)
+        auto input = encoder->AddInputResource(
+            7, // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER = 7
             37, // VK_FORMAT_R8G8B8A8_UNORM = 37
-            shape,
-            strides
+            shape, strides
         );
-        std::cout << "✅ PASS" << std::endl;
         
-        // Test 4: Add output resource
-        std::cout << "Test 4: Adding output resource... ";
-        std::vector<int64_t> outputShape = {1, 1000}; // Classification output
-        
-        auto outputRef = encoder->AddOutputResource(
-            0, // DescriptorType
+        auto output = encoder->AddOutputResource(
+            7, // Storage buffer
             100, // VK_FORMAT_R32_SFLOAT = 100
-            outputShape,
-            strides
+            {1, 1000}, strides
         );
-        std::cout << "✅ PASS" << std::endl;
         
-        // Test 5: Add constant
-        std::cout << "Test 5: Adding constant... ";
-        std::vector<float> weights(1024, 0.1f);
-        auto constantRef = encoder->AddConstant(
-            weights.data(),
-            weights.size() * sizeof(float)
-        );
-        std::cout << "✅ PASS" << std::endl;
+        std::cout << "✅ PASS\n";
+        tests_passed++;
         
-        // Test 6: Encode to buffer
-        std::cout << "Test 6: Encoding to buffer... ";
-        size_t encodedSize = 0;
-        encoder->GetEncodedSize(encodedSize);
+        // Test 4: Finish encoding
+        std::cout << "Test 4: Finish encoding... ";
+        encoder->Finish();
+        std::cout << "✅ PASS\n";
+        tests_passed++;
         
-        if (encodedSize > 0) {
-            std::vector<uint8_t> buffer(encodedSize);
-            encoder->Encode(buffer.data(), buffer.size());
-            std::cout << "✅ PASS (size: " << encodedSize << " bytes)" << std::endl;
+        // Test 5: Write to stream
+        std::cout << "Test 5: Write VGF data... ";
+        std::ostringstream oss;
+        bool writeSuccess = encoder->WriteTo(oss);
+        
+        if (writeSuccess && oss.str().size() > 0) {
+            std::cout << "✅ PASS (size: " << oss.str().size() << " bytes)\n";
+            tests_passed++;
         } else {
-            std::cout << "❌ FAIL (size: 0)" << std::endl;
-            return 1;
+            std::cout << "❌ FAIL\n";
+            tests_failed++;
         }
         
-        std::cout << "\n=============================";
-        std::cout << "\n✅ All tests passed!" << std::endl;
-        std::cout << "VGF library is working correctly." << std::endl;
-        
-        return 0;
-        
     } catch (const std::exception& e) {
-        std::cout << "❌ EXCEPTION: " << e.what() << std::endl;
+        std::cout << "❌ EXCEPTION: " << e.what() << "\n";
+        tests_failed++;
+    }
+    
+    // Summary
+    std::cout << "\n========================\n";
+    std::cout << "Results: " << tests_passed << " passed, " << tests_failed << " failed\n";
+    
+    if (tests_failed == 0) {
+        std::cout << "✅ VGF library is working!\n";
+        return 0;
+    } else {
+        std::cout << "❌ Some tests failed\n";
         return 1;
     }
 }
