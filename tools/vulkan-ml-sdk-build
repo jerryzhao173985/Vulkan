@@ -1,0 +1,217 @@
+#!/bin/bash
+# Enhanced ARM ML SDK Tool with Build Integration
+
+VERSION="2.0.0"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+SDK_ROOT="/Users/jerry/Vulkan"
+SDK_BUILD="$SDK_ROOT/ARM-ML-SDK-Complete"
+
+show_banner() {
+    echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║      ARM ML SDK for Vulkan v2.0 - Complete System         ║${NC}"
+    echo -e "${BLUE}║                   macOS ARM64 Edition                      ║${NC}"
+    echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+# Build command - uses all repos
+cmd_build() {
+    echo -e "${CYAN}=== Building Complete SDK ===${NC}"
+    echo ""
+    
+    # Check if we already have builds
+    if [ -f "$SDK_ROOT/ai-ml-sdk-for-vulkan/build-final/bin/scenario-runner" ]; then
+        echo -e "${GREEN}✓ Using existing optimized build${NC}"
+    else
+        echo "Building SDK components..."
+        cd "$SDK_ROOT/ai-ml-sdk-for-vulkan"
+        
+        if [ -f "build_all_macos.sh" ]; then
+            ./build_all_macos.sh
+        else
+            python3 ./scripts/build.py --build-type Release --threads 8
+        fi
+    fi
+    
+    # Create unified SDK
+    echo ""
+    echo -e "${CYAN}Creating unified SDK package...${NC}"
+    
+    rm -rf "$SDK_BUILD"
+    mkdir -p "$SDK_BUILD"/{bin,lib,models,shaders,tools}
+    
+    # Copy components
+    cp ai-ml-sdk-for-vulkan/build-final/bin/scenario-runner "$SDK_BUILD/bin/" 2>/dev/null
+    cp ai-ml-sdk-for-vulkan/build-final/lib/*.a "$SDK_BUILD/lib/" 2>/dev/null
+    cp -r ai-ml-sdk-for-vulkan/unified-ml-sdk/models/* "$SDK_BUILD/models/" 2>/dev/null
+    cp -r ai-ml-sdk-for-vulkan/unified-ml-sdk/shaders/*.spv "$SDK_BUILD/shaders/" 2>/dev/null
+    cp -r ai-ml-sdk-for-vulkan/unified-ml-sdk/tools/* "$SDK_BUILD/tools/" 2>/dev/null
+    
+    echo -e "${GREEN}✓ SDK built successfully!${NC}"
+    echo "Location: $SDK_BUILD"
+}
+
+# Run command - execute SDK tools
+cmd_run() {
+    local tool="${1:-scenario-runner}"
+    shift
+    
+    if [ ! -d "$SDK_BUILD" ]; then
+        echo -e "${YELLOW}SDK not built. Building now...${NC}"
+        cmd_build
+    fi
+    
+    export DYLD_LIBRARY_PATH=/usr/local/lib:$SDK_BUILD/lib
+    
+    case "$tool" in
+        scenario-runner|sr)
+            "$SDK_BUILD/bin/scenario-runner" "$@"
+            ;;
+        test)
+            if [ -f "$SDK_BUILD/run_tests.sh" ]; then
+                "$SDK_BUILD/run_tests.sh"
+            else
+                "$SDK_BUILD/bin/scenario-runner" --version
+            fi
+            ;;
+        ml-pipeline|ml)
+            python3 "$SDK_BUILD/tools/create_ml_pipeline.py" "$@"
+            ;;
+        profile)
+            python3 "$SDK_BUILD/tools/profile_performance.py" "$@"
+            ;;
+        *)
+            echo -e "${RED}Unknown tool: $tool${NC}"
+            echo "Available: scenario-runner, test, ml-pipeline, profile"
+            ;;
+    esac
+}
+
+# Info command - show complete SDK status
+cmd_info() {
+    show_banner
+    
+    echo -e "${CYAN}SDK Configuration:${NC}"
+    echo "  Root: $SDK_ROOT"
+    echo "  Build: $SDK_BUILD"
+    echo ""
+    
+    echo -e "${CYAN}Repository Status:${NC}"
+    cd "$SDK_ROOT"
+    git submodule foreach 'echo "  $name: $(git describe --always 2>/dev/null)"' 2>/dev/null
+    echo ""
+    
+    if [ -f "$SDK_BUILD/bin/scenario-runner" ]; then
+        echo -e "${CYAN}Build Status:${NC}"
+        echo -e "  ${GREEN}✓ SDK is built${NC}"
+        echo "  Binary: $SDK_BUILD/bin/scenario-runner"
+        echo "  Models: $(ls -1 $SDK_BUILD/models/*.tflite 2>/dev/null | wc -l) ML models"
+        echo "  Shaders: $(ls -1 $SDK_BUILD/shaders/*.spv 2>/dev/null | wc -l) compute shaders"
+        echo "  Tools: $(ls -1 $SDK_BUILD/tools/*.py 2>/dev/null | wc -l) Python tools"
+    else
+        echo -e "${CYAN}Build Status:${NC}"
+        echo -e "  ${YELLOW}! SDK not built${NC}"
+        echo "  Run: vulkan-ml-sdk-build build"
+    fi
+}
+
+# List command - show what's available
+cmd_list() {
+    echo -e "${CYAN}=== Available Components ===${NC}"
+    echo ""
+    
+    if [ -d "$SDK_BUILD" ]; then
+        echo "Models:"
+        ls -1 "$SDK_BUILD/models/"*.tflite 2>/dev/null | while read m; do
+            echo "  • $(basename "$m") ($(du -h "$m" | cut -f1))"
+        done
+        
+        echo ""
+        echo "Tools:"
+        ls -1 "$SDK_BUILD/tools/"*.py 2>/dev/null | while read t; do
+            echo "  • $(basename "$t")"
+        done
+        
+        echo ""
+        echo "Shaders: $(ls -1 $SDK_BUILD/shaders/*.spv 2>/dev/null | wc -l) compiled"
+    else
+        echo -e "${YELLOW}SDK not built yet${NC}"
+    fi
+}
+
+# Clean command
+cmd_clean() {
+    echo -e "${CYAN}=== Cleaning Build Artifacts ===${NC}"
+    
+    echo "Cleaning build directories..."
+    find "$SDK_ROOT" -type d -name "build*" -not -path "*/.git/*" -exec rm -rf {} + 2>/dev/null
+    rm -rf "$SDK_BUILD"
+    
+    echo -e "${GREEN}✓ Clean complete${NC}"
+}
+
+# Help
+show_help() {
+    show_banner
+    echo "Usage: vulkan-ml-sdk-build <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  ${GREEN}build${NC}       - Build complete SDK from all repos"
+    echo "  ${GREEN}run${NC}         - Run SDK tools (scenario-runner, test, ml-pipeline)"
+    echo "  ${GREEN}info${NC}        - Show complete SDK information"
+    echo "  ${GREEN}list${NC}        - List available models, tools, shaders"
+    echo "  ${GREEN}clean${NC}       - Clean all build artifacts"
+    echo "  ${GREEN}help${NC}        - Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  vulkan-ml-sdk-build build"
+    echo "  vulkan-ml-sdk-build run test"
+    echo "  vulkan-ml-sdk-build run scenario-runner --version"
+    echo "  vulkan-ml-sdk-build run ml-pipeline --model models/la_muse.tflite"
+}
+
+# Main dispatcher
+main() {
+    cd "$SDK_ROOT"
+    
+    case "${1:-help}" in
+        build)
+            cmd_build
+            ;;
+        run)
+            shift
+            cmd_run "$@"
+            ;;
+        info)
+            cmd_info
+            ;;
+        list)
+            cmd_list
+            ;;
+        clean)
+            cmd_clean
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        version|--version|-v)
+            echo "ARM ML SDK Build System v$VERSION"
+            ;;
+        *)
+            echo -e "${RED}Unknown command: $1${NC}"
+            show_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

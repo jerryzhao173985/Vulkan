@@ -1,0 +1,23 @@
+#version 450
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0) readonly buffer MatA { float data[]; } a;
+layout(set = 0, binding = 1) readonly buffer MatB { float data[]; } b;
+layout(set = 0, binding = 2) writeonly buffer MatC { float data[]; } c;
+
+layout(push_constant) uniform Constants {
+    uint M, N, K;
+} constants;
+
+void main() {
+    uint row = gl_GlobalInvocationID.y;
+    uint col = gl_GlobalInvocationID.x;
+    
+    if (row >= constants.M || col >= constants.N) return;
+    
+    float sum = 0.0;
+    for (uint i = 0; i < constants.K; i++) {
+        sum += a.data[row * constants.K + i] * b.data[i * constants.N + col];
+    }
+    c.data[row * constants.N + col] = sum;
+}

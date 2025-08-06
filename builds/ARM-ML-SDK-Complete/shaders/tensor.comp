@@ -1,0 +1,36 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+#version 460
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_shader_8bit_storage : require
+#extension GL_ARM_tensors : require
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform tensorARM<int8_t, 4> intensor;
+layout(set = 0, binding = 1) uniform tensorARM<int8_t, 4> outtensor;
+
+int8_t read(tensorARM<int8_t, 4> tensor, uint coords[4]) {
+    int8_t value;
+    tensorReadARM(tensor, coords, value);
+    return value;
+}
+
+void write(tensorARM<int8_t, 4> tensor, uint coords[4], int8_t value) {
+    tensorWriteARM(tensor, coords, value);
+}
+
+void main() {
+    uint oy = gl_GlobalInvocationID.y;
+    uint ox = gl_GlobalInvocationID.x;
+    uint oc = gl_GlobalInvocationID.z;
+
+    if (oy >= tensorSizeARM(intensor, 1) || ox >= tensorSizeARM(intensor, 2) || oc >= tensorSizeARM(intensor, 3)) {
+        return;
+    }
+    uint coords[4] = uint[](0u, oy, ox, oc);
+    int8_t value;
+    value = read(intensor, coords);
+    write(outtensor, coords, value);
+}

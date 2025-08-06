@@ -1,0 +1,44 @@
+{
+  "name": "Test_transpose_1",
+  "description": "Test scenario for transpose operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "transpose",
+      "config": {
+        "perm": [
+          0,
+          3,
+          1,
+          2
+        ],
+        "input_shapes": [
+          [
+            1,
+            3,
+            224,
+            224
+          ]
+        ]
+      },
+      "input_shapes": [
+        [
+          1,
+          3,
+          224,
+          224
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

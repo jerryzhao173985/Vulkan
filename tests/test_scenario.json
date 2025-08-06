@@ -1,0 +1,22 @@
+{
+  "name": "simple_add_test",
+  "description": "Test simple vector addition",
+  "model": "add_vectors",
+  "operations": [
+    {
+      "type": "compute",
+      "shader": "add_vectors.spv",
+      "workgroups": [256, 1, 1]
+    }
+  ],
+  "input": {
+    "shape": [1, 1024],
+    "dtype": "float32",
+    "data": "input.npy"
+  },
+  "output": {
+    "shape": [1, 1024],
+    "dtype": "float32",
+    "path": "output.npy"
+  }
+}

@@ -1,0 +1,54 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_T %in_t%
+#define OUT_T %out_t%
+#define TYPE_IN %in_t_type%
+
+layout(local_size_x = %warpX%) in;
+
+layout(push_constant) uniform PushConstants {
+    uint shift;
+} pushConstants;
+
+layout(constant_id = 0) const uint32_t RANK_IN = RANK_MAX;
+layout(constant_id = 1) const uint32_t RANK_OUT = RANK_MAX;
+
+layout(set = 0, binding = 0) uniform tensorARM<OUT_T, RANK_OUT> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_T, RANK_IN> inputData1;
+layout(set = 2, binding = 0) uniform tensorARM<IN_T, RANK_IN> inputData2;
+
+void main() {
+    uint[RANK_OUT] index;
+    getIndex(outputData, index);
+
+    uint[RANK_IN] inputShape1;
+    uint[RANK_IN] inputIndex1;
+    IN_T value1;
+
+    getShape(inputShape1, inputData1);
+    applyBroadcast(inputShape1, index, inputIndex1);
+    tensorReadARM(inputData1, inputIndex1, value1);
+
+    uint[RANK_IN] inputShape2;
+    uint[RANK_IN] inputIndex2;
+    IN_T value2;
+
+    getShape(inputShape2, inputData2);
+    applyBroadcast(inputShape2, index, inputIndex2);
+    tensorReadARM(inputData2, inputIndex2, value2);
+
+#if IS_FLOAT(TYPE_IN)
+    OUT_T result = OUT_T(value1) * OUT_T(value2);
+#else
+    int64_t result = int64_t(value1) * int64_t(value2);
+
+    if (pushConstants.shift > 0) {
+        result = (result + (int64_t(1) << (pushConstants.shift - 1))) >> pushConstants.shift;
+    }
+#endif
+
+    tensorWriteARM(outputData, index, OUT_T(result));
+}

@@ -1,0 +1,31 @@
+#version 450
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) buffer Data { float data[]; } buf;
+
+layout(push_constant) uniform Constants {
+    uint size;
+    uint operation; // 0=add, 1=mul, 2=fma, 3=complex
+} constants;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= constants.size) return;
+    
+    float x = buf.data[idx];
+    
+    switch (constants.operation) {
+        case 0: // Add constant
+            buf.data[idx] = x + 1.0;
+            break;
+        case 1: // Multiply
+            buf.data[idx] = x * 2.0;
+            break;
+        case 2: // FMA
+            buf.data[idx] = x * 2.0 + 1.0;
+            break;
+        case 3: // Complex operation
+            buf.data[idx] = sqrt(abs(sin(x) * cos(x * 2.0))) + exp(-x * x);
+            break;
+    }
+}

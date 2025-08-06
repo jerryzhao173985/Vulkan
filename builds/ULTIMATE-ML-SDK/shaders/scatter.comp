@@ -1,0 +1,35 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_OUT_T %in_out_t%
+#define INDEX_T %index_t%
+
+layout(local_size_x = %warpX%) in;
+
+layout(set = 0, binding = 0) uniform tensorARM<IN_OUT_T, 3> outputData;    // [N, K, C]
+layout(set = 1, binding = 0) uniform tensorARM<IN_OUT_T, 3> inputData;     // [N, W, C]
+layout(set = 2, binding = 0) uniform tensorARM<IN_OUT_T, 3> valuesData;    // [N, K, C]
+layout(set = 3, binding = 0) uniform tensorARM<INDEX_T, 2> indicesData;    // [N, W]
+
+void main() {
+    uint[3] index;
+    getIndex3(outputData, index);
+
+    IN_OUT_T value;
+    tensorReadARM(valuesData, index, value);
+
+    uint W = tensorSizeARM(indicesData, 1);
+    for (uint w = 0; w < W; w++) {
+        INDEX_T k;
+        tensorReadARM(indicesData, uint[](index[0], w), k);
+
+        if (k == index[1]) {
+            tensorReadARM(inputData, uint[](index[0], w, index[2]), value);
+            break;
+        }
+    }
+
+    tensorWriteARM(outputData, index, value);
+}

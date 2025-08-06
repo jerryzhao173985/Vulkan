@@ -1,0 +1,47 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_T %in_t%
+#define OUT_T %out_t%
+
+layout(local_size_x = %warpX%) in;
+
+layout(constant_id = 0) const uint32_t RANK = RANK_MAX;
+
+layout(set = 0, binding = 0) uniform tensorARM<OUT_T, RANK> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_T, RANK> inputData;
+layout(set = 2, binding = 0) uniform tensorARM<IN_T, 1> tableData;
+
+int32_t lookup(int8_t value) {
+    IN_T tableValue;
+    tensorReadARM(tableData, uint[](value + 128), tableValue);
+
+    return tableValue;
+}
+
+int32_t lookup(int16_t value) {
+    int32_t index = (int32_t(value) + 32768) >> 7;
+    int32_t fraction = value & 0x7f;
+
+    IN_T tableValue[2];
+    tensorReadARM(tableData, uint[](index), tableValue);
+
+    int32_t base = tableValue[0];
+    int32_t next = tableValue[1];
+    int32_t slope = next - base;
+    int32_t result = (base << 7) + slope * fraction;
+
+    return result;
+}
+
+void main() {
+    uint[RANK] index;
+    getIndex(outputData, index);
+
+    IN_T value;
+    tensorReadARM(inputData, index, value);
+
+    tensorWriteARM(outputData, index, OUT_T(lookup(value)));
+}

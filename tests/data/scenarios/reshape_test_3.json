@@ -1,0 +1,39 @@
+{
+  "name": "Test_reshape_3",
+  "description": "Test scenario for reshape operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "reshape",
+      "config": {
+        "input_shapes": [
+          [
+            100,
+            10
+          ]
+        ],
+        "output_shape": [
+          10,
+          10,
+          10
+        ]
+      },
+      "input_shapes": [
+        [
+          100,
+          10
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

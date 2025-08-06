@@ -1,0 +1,52 @@
+{
+  "name": "Test_add_1",
+  "description": "Test scenario for add operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "add",
+      "config": {
+        "input_shapes": [
+          [
+            8,
+            224,
+            224,
+            3
+          ],
+          [
+            8,
+            224,
+            224,
+            3
+          ]
+        ],
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "input_shapes": [
+        [
+          8,
+          224,
+          224,
+          3
+        ],
+        [
+          8,
+          224,
+          224,
+          3
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

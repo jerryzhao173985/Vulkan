@@ -1,0 +1,59 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_T %in_t%
+#define OUT_T %out_t%
+#define TYPE_IN %in_t_type%
+#define TYPE_OUT %out_t_type%
+#define TYPE_IN_MIN %in_t_lowest%
+#define TYPE_IN_MAX %in_t_max%
+#define TYPE_OUT_MIN %out_t_lowest%
+#define TYPE_OUT_MAX %out_t_max%
+
+layout(local_size_x = %warpX%) in;
+
+layout(constant_id = 0) const uint32_t RANK = RANK_MAX;
+
+layout(set = 0, binding = 0) uniform tensorARM<OUT_T, RANK> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_T, RANK> inputData;
+
+void main() {
+    uint[RANK] index;
+    getIndex(outputData, index);
+
+    IN_T value;
+    tensorReadARM(inputData, index, value);
+
+#if IS_BOOL(TYPE_OUT)
+    OUT_T outValue = OUT_T(value);
+#elif IS_FLOAT(TYPE_OUT)
+    #if IS_BOOL(TYPE_IN)
+        OUT_T outValue = OUT_T(value ? 1.0 : 0.0);
+    #else
+        OUT_T outValue = OUT_T(0.0);
+        if (TYPE_IN_MIN < TYPE_OUT_MIN && TYPE_IN_MAX > TYPE_OUT_MAX) {
+            if (value > IN_T(TYPE_OUT_MAX)) {
+                outValue = OUT_T(1.0 / 0.0); // +Inf
+            } else if (value < IN_T(TYPE_OUT_MIN)) {
+                outValue = OUT_T(-1.0 / 0.0); // -Inf
+            } else {
+                outValue = OUT_T(value);
+            }
+        } else {
+            outValue = OUT_T(value);
+        }
+    #endif
+#else
+    #if IS_BOOL(TYPE_IN)
+        OUT_T outValue = OUT_T(value ? 1 : 0);
+    #elif IS_FLOAT(TYPE_IN)
+        OUT_T outValue = OUT_T(clamp(round(double(value)), TYPE_OUT_MIN, TYPE_OUT_MAX));
+    #else
+        OUT_T outValue = OUT_T(value);
+    #endif
+#endif
+
+    tensorWriteARM(outputData, index, outValue);
+}

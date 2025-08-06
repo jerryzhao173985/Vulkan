@@ -1,0 +1,19 @@
+#version 450
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) readonly buffer InputBuffer { float data[]; } input_buf;
+layout(set = 0, binding = 1) readonly buffer KernelBuffer { float data[]; } kernel_buf;
+layout(set = 0, binding = 2) writeonly buffer OutputBuffer { float data[]; } output_buf;
+layout(push_constant) uniform PushConstants {
+    uint input_size;
+    uint kernel_size;
+} pc;
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= pc.input_size - pc.kernel_size + 1) return;
+    
+    float sum = 0.0;
+    for (uint k = 0; k < pc.kernel_size; k++) {
+        sum += input_buf.data[idx + k] * kernel_buf.data[k];
+    }
+    output_buf.data[idx] = sum;
+}

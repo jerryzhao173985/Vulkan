@@ -1,0 +1,39 @@
+{
+  "name": "Test_avgpool_12",
+  "description": "Test scenario for avgpool operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "avgpool",
+      "config": {
+        "global_pooling": true,
+        "input_shapes": [
+          [
+            1,
+            7,
+            7,
+            512
+          ]
+        ]
+      },
+      "input_shapes": [
+        [
+          1,
+          7,
+          7,
+          512
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

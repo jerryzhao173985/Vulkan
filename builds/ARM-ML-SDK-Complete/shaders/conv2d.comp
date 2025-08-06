@@ -1,0 +1,110 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_T %in_t%
+#define OUT_T %out_t%
+#define WEIGHT_T %weight_t%
+#define TYPE_ACC %acc_t_type%
+#define ACC_T %acc_t%
+
+#if TYPE_ACC == TYPE_INT64
+    #define VEC4 dvec4
+#elif TYPE_ACC == TYPE_INT32
+    #define VEC4 ivec4
+#else
+    #define VEC4 vec4
+#endif
+
+layout(local_size_x = %warpX%, local_size_y = %warpY%, local_size_z = %warpZ%) in;
+
+layout(push_constant) uniform PushConstants {
+    int32_t inputZeroPoint;
+    int32_t weightZeroPoint;
+    int32_t pad[4];
+    int32_t stride[2];
+    int32_t dilation[2];
+} pushConstants;
+
+layout(set = 0, binding = 0) uniform tensorARM<OUT_T, 4> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_T, 4> inputData;
+layout(set = 2, binding = 0) uniform tensorARM<WEIGHT_T, 4> weightsData;
+layout(set = 3, binding = 0) uniform tensorARM<OUT_T, 1> biasesData;
+
+void main() {
+    ACC_T acc[4] = {ACC_T(0), ACC_T(0), ACC_T(0), ACC_T(0)};
+    uint batches = tensorSizeARM(outputData, 0);
+    uint n = gl_GlobalInvocationID.x % batches;
+    uint ox = gl_GlobalInvocationID.x / batches;
+    uint oy = gl_GlobalInvocationID.y;
+    uint oc = gl_GlobalInvocationID.z * 4;
+    uint[4] ocs = {oc, oc + 1, oc + 2, oc + 3};
+
+    if (oy >= tensorSizeARM(outputData, 1) ||
+        ox >= tensorSizeARM(outputData, 2) ||
+        oc >= tensorSizeARM(outputData, 3)) {
+        return;
+    }
+
+    uint iy = oy * pushConstants.stride[0] - pushConstants.pad[0];
+    uint ix = ox * pushConstants.stride[1] - pushConstants.pad[2];
+
+    for (uint ky = 0; ky < tensorSizeARM(weightsData, 1); ky++) {
+        for (uint kx = 0; kx < tensorSizeARM(weightsData, 2); kx++) {
+            uint y = iy + ky * pushConstants.dilation[0];
+            uint x = ix + kx * pushConstants.dilation[1];
+
+            if (y < tensorSizeARM(inputData, 1) && x < tensorSizeARM(inputData, 2)) {
+                const uint IC = tensorSizeARM(inputData, 3);
+                for (uint ic = 0; ic < IC; ic += 4) {
+                    IN_T tempValue[4];
+                    tensorReadARM(inputData, uint[](n, y, x, ic), tempValue);
+                    VEC4 value = VEC4(ACC_T(tempValue[0]), ACC_T(tempValue[1]), ACC_T(tempValue[2]), ACC_T(tempValue[3]));
+
+                    WEIGHT_T weight[4][4];
+                    tensorReadARM(weightsData, uint[](ocs[0], ky, kx, ic), weight[0]);
+                    tensorReadARM(weightsData, uint[](ocs[1], ky, kx, ic), weight[1]);
+                    tensorReadARM(weightsData, uint[](ocs[2], ky, kx, ic), weight[2]);
+                    tensorReadARM(weightsData, uint[](ocs[3], ky, kx, ic), weight[3]);
+
+                    VEC4 outValue = value - pushConstants.inputZeroPoint;
+                    VEC4 outWeight0 = VEC4(ACC_T(weight[0][0]), ACC_T(weight[0][1]), ACC_T(weight[0][2]), ACC_T(weight[0][3])) - pushConstants.weightZeroPoint;
+                    VEC4 outWeight1 = VEC4(ACC_T(weight[1][0]), ACC_T(weight[1][1]), ACC_T(weight[1][2]), ACC_T(weight[1][3])) - pushConstants.weightZeroPoint;
+                    VEC4 outWeight2 = VEC4(ACC_T(weight[2][0]), ACC_T(weight[2][1]), ACC_T(weight[2][2]), ACC_T(weight[2][3])) - pushConstants.weightZeroPoint;
+                    VEC4 outWeight3 = VEC4(ACC_T(weight[3][0]), ACC_T(weight[3][1]), ACC_T(weight[3][2]), ACC_T(weight[3][3])) - pushConstants.weightZeroPoint;
+
+                    VEC4 mul0 = outValue * outWeight0;
+                    VEC4 mul1 = outValue * outWeight1;
+                    VEC4 mul2 = outValue * outWeight2;
+                    VEC4 mul3 = outValue * outWeight3;
+                    for (uint idx = 0; idx < 4 && ic + idx < IC; ++idx) {
+                        acc[0] += ACC_T(mul0[idx]);
+                        acc[1] += ACC_T(mul1[idx]);
+                        acc[2] += ACC_T(mul2[idx]);
+                        acc[3] += ACC_T(mul3[idx]);
+                    }
+                }
+            }
+        }
+    }
+
+    if (tensorSizeARM(biasesData, 0) == 1) {
+        OUT_T bias;
+        tensorReadARM(biasesData, uint[](0), bias);
+        acc[0] += ACC_T(bias);
+        acc[1] += ACC_T(bias);
+        acc[2] += ACC_T(bias);
+        acc[3] += ACC_T(bias);
+    } else {
+        OUT_T bias[4];
+        tensorReadARM(biasesData, uint[](oc), bias);
+        acc[0] += ACC_T(bias[0]);
+        acc[1] += ACC_T(bias[1]);
+        acc[2] += ACC_T(bias[2]);
+        acc[3] += ACC_T(bias[3]);
+    }
+    uint index[] = {n, oy, ox, oc};
+    OUT_T outData[4] = OUT_T[](OUT_T(acc[0]), OUT_T(acc[1]), OUT_T(acc[2]), OUT_T(acc[3]));
+    tensorWriteARM(outputData, index, outData);
+}

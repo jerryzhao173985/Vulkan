@@ -1,0 +1,56 @@
+#version 450
+#define TILE_SIZE 16
+
+layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE) in;
+
+layout(set = 0, binding = 0) readonly buffer MatA { float data[]; } a;
+layout(set = 0, binding = 1) readonly buffer MatB { float data[]; } b;
+layout(set = 0, binding = 2) writeonly buffer MatC { float data[]; } c;
+
+layout(push_constant) uniform Constants {
+    uint M, N, K;
+} constants;
+
+shared float tileA[TILE_SIZE][TILE_SIZE];
+shared float tileB[TILE_SIZE][TILE_SIZE];
+
+void main() {
+    uint row = gl_WorkGroupID.y * TILE_SIZE + gl_LocalInvocationID.y;
+    uint col = gl_WorkGroupID.x * TILE_SIZE + gl_LocalInvocationID.x;
+    uint localRow = gl_LocalInvocationID.y;
+    uint localCol = gl_LocalInvocationID.x;
+    
+    float sum = 0.0;
+    
+    for (uint t = 0; t < (constants.K + TILE_SIZE - 1) / TILE_SIZE; t++) {
+        // Load tiles into shared memory
+        uint aRow = row;
+        uint aCol = t * TILE_SIZE + localCol;
+        if (aRow < constants.M && aCol < constants.K) {
+            tileA[localRow][localCol] = a.data[aRow * constants.K + aCol];
+        } else {
+            tileA[localRow][localCol] = 0.0;
+        }
+        
+        uint bRow = t * TILE_SIZE + localRow;
+        uint bCol = col;
+        if (bRow < constants.K && bCol < constants.N) {
+            tileB[localRow][localCol] = b.data[bRow * constants.N + bCol];
+        } else {
+            tileB[localRow][localCol] = 0.0;
+        }
+        
+        barrier();
+        
+        // Compute partial dot product
+        for (uint k = 0; k < TILE_SIZE; k++) {
+            sum += tileA[localRow][k] * tileB[k][localCol];
+        }
+        
+        barrier();
+    }
+    
+    if (row < constants.M && col < constants.N) {
+        c.data[row * constants.N + col] = sum;
+    }
+}

@@ -1,0 +1,119 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_T %in_t%
+#define OUT_T %out_t%
+#define TYPE_IN %in_t_type%
+
+layout(local_size_x = %warpX%) in;
+
+layout(push_constant) uniform PushConstants {
+    uint nanMode;
+} pushConstants;
+
+layout(constant_id = 0) const uint32_t RANK_IN = RANK_MAX;
+layout(constant_id = 1) const uint32_t RANK_OUT = RANK_MAX;
+
+layout(set = 0, binding = 0) uniform tensorARM<OUT_T, RANK_OUT> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_T, RANK_IN> inputData1;
+layout(set = 2, binding = 0) uniform tensorARM<IN_T, RANK_IN> inputData2;
+
+uint zeroExtend(int8_t v) { return uint8_t(v); }
+
+uint zeroExtend(int16_t v) { return uint16_t(v); }
+
+uint zeroExtend(int32_t v) { return v; }
+
+// I don't think min or max will ever actually be used with bool inputs, but `applyMax` and `applyMin` are always
+// defined. Since builtin min and max do not support bool inputs, we define them here.
+bool min(bool a, bool b){
+    return a && b;
+}
+
+bool max(bool a, bool b){
+    return a || b;
+}
+
+#if IS_FLOAT(TYPE_IN)
+OUT_T power(IN_T base, IN_T exponent) {
+    // Positive numbers can be passed directly to pow()
+    if (base >= IN_T(0)) {
+        return OUT_T(pow(base, exponent));
+    }
+    // Most ICD produce NaN for all negative numbers, whereas we want to handle
+    // the special cases where then exponent is power of 1.0 or power of 2.0
+    else {
+        // If exponent is power of 2.0, then output should be a positive number
+        if (mod(exponent, IN_T(2.0)) == 0.0) {
+            return OUT_T(pow(-base, exponent));
+        }
+        // If exponent is power of 1.0, then output should be a negative number
+        else if (mod(exponent, IN_T(1.0)) == 0.0) {
+            return OUT_T(-pow(-base, exponent));
+        }
+        // Else output should be NaN
+        else {
+            return OUT_T(NAN);
+        }
+    }
+}
+#endif
+
+OUT_T applyMin(IN_T a, IN_T b, uint nanMode)
+{
+#if IS_FLOAT(TYPE_IN)
+    if (isnan(a)) {
+        return nanMode == NAN_MODE_PROPAGATE ? OUT_T(a) : OUT_T(b);
+    }
+    else if (isnan(b)) {
+        return nanMode == NAN_MODE_PROPAGATE ? OUT_T(b) : OUT_T(a);
+    }
+#endif
+
+    return OUT_T(min(a, b));
+}
+
+OUT_T applyMax(IN_T a, IN_T b, uint nanMode)
+{
+#if IS_FLOAT(TYPE_IN)
+    if (isnan(a)) {
+        return nanMode == NAN_MODE_PROPAGATE ? OUT_T(a) : OUT_T(b);
+    }
+    else if (isnan(b)) {
+        return nanMode == NAN_MODE_PROPAGATE ? OUT_T(b) : OUT_T(a);
+    }
+#endif
+
+    return OUT_T(max(a, b));
+}
+
+void main() {
+    uint[RANK_OUT] index;
+    getIndex(outputData, index);
+
+    // Input 1 tensorARM
+    uint[RANK_IN] inputShape1;
+    uint[RANK_IN] inputIndex1;
+    IN_T value1;
+
+    getShape(inputShape1, inputData1);
+    applyBroadcast(inputShape1, index, inputIndex1);
+    tensorReadARM(inputData1, inputIndex1, value1);
+
+    // Input 2 tensorARM
+    uint[RANK_IN] inputShape2;
+    uint[RANK_IN] inputIndex2;
+    IN_T value2;
+
+    getShape(inputShape2, inputData2);
+    applyBroadcast(inputShape2, index, inputIndex2);
+    tensorReadARM(inputData2, inputIndex2, value2);
+
+    // Output
+    OUT_T value;
+    value = OUT_T(%operation%);
+
+    tensorWriteARM(outputData, index, value);
+}

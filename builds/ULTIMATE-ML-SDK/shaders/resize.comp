@@ -1,0 +1,130 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_T %in_t%
+#define OUT_T %out_t%
+#define TYPE_OUT %out_t_type%
+
+#define NEAREST     1
+#define BILINEAR    2
+
+layout(local_size_x = %warpX%) in;
+
+struct ND {
+    int32_t n;
+    int32_t d;
+};
+
+struct Scale {
+    ND y;
+    ND x;
+};
+
+struct YX {
+    int32_t y;
+    int32_t x;
+};
+
+layout(push_constant) uniform PushConstants {
+    Scale scale;
+    YX offset;
+    YX border;
+    uint mode;
+} pushConstants;
+
+layout(set = 0, binding = 0) uniform tensorARM<OUT_T, 4> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_T, 4> inputData;
+
+int idivFloor(int numerator, int denominator) {
+    int result = numerator / denominator;
+
+    if (result * denominator > numerator) {
+        result--;
+    }
+
+    return result;
+}
+
+void main() {
+    uint[4] index;
+    getIndex4(outputData, index);
+
+    OUT_T acc = OUT_T(0);
+
+    uint n = index[0];
+    uint oy = index[1];
+    uint ox = index[2];
+    uint c = index[3];
+
+    uint[4] inputShape = {
+        tensorSizeARM(inputData, 0),
+        tensorSizeARM(inputData, 1),
+        tensorSizeARM(inputData, 2),
+        tensorSizeARM(inputData, 3)
+    };
+
+#if IS_FLOAT(TYPE_OUT)
+    OUT_T unit_y = OUT_T(1.0);
+    OUT_T unit_x = OUT_T(1.0);
+#else
+    int16_t unit_y = int16_t(pushConstants.scale.y.n);
+    int16_t unit_x = int16_t(pushConstants.scale.x.n);
+#endif
+
+    int32_t y = int32_t(oy * pushConstants.scale.y.d + pushConstants.offset.y);
+    int16_t iy = int16_t(idivFloor(y, pushConstants.scale.y.n));
+    int16_t ry = int16_t(y - iy * pushConstants.scale.y.n);
+
+    int32_t x = int32_t(ox * pushConstants.scale.x.d + pushConstants.offset.x);
+    int16_t ix = int16_t(idivFloor(x, pushConstants.scale.x.n));
+    int16_t rx = int16_t(x - ix * pushConstants.scale.x.n);
+
+#if IS_FLOAT(TYPE_OUT)
+    OUT_T dy = OUT_T(ry) / OUT_T(pushConstants.scale.y.n);
+    OUT_T dx = OUT_T(rx) / OUT_T(pushConstants.scale.x.n);
+#else
+    int16_t dy = ry;
+    int16_t dx = rx;
+#endif
+
+    int16_t iy0 = int16_t(max(iy, 0));
+    int16_t iy1 = int16_t(min(iy + 1, inputShape[1] - 1));
+    int16_t ix0 = int16_t(max(ix, 0));
+    int16_t ix1 = int16_t(min(ix + 1, inputShape[2] - 1));
+
+    if (pushConstants.mode == BILINEAR) {
+        IN_T v00;
+        tensorReadARM(inputData, uint[](n, iy0, ix0, c), v00);
+
+        IN_T v01;
+        tensorReadARM(inputData, uint[](n, iy0, ix1, c), v01);
+
+        IN_T v10;
+        tensorReadARM(inputData, uint[](n, iy1, ix0, c), v10);
+
+        IN_T v11;
+        tensorReadARM(inputData, uint[](n, iy1, ix1, c), v11);
+
+        acc  = OUT_T(v00) * OUT_T(unit_y - dy) * OUT_T(unit_x - dx);
+        acc += OUT_T(v01) * OUT_T(unit_y - dy) * OUT_T(dx);
+        acc += OUT_T(v10) * OUT_T(dy) * OUT_T(unit_x - dx);
+        acc += OUT_T(v11) * OUT_T(dy) * OUT_T(dx);
+    } else if (pushConstants.mode == NEAREST) {
+#if IS_FLOAT(TYPE_OUT)
+        int32_t iy = (dy >= 0.5) ? iy1 : iy0;
+        int32_t ix = (dx >= 0.5) ? ix1 : ix0;
+#else
+        int32_t iy = (2 * dy >= pushConstants.scale.y.n) ? iy1 : iy0;
+        int32_t ix = (2 * dx >= pushConstants.scale.x.n) ? ix1 : ix0;
+#endif
+
+        IN_T value;
+        tensorReadARM(inputData, uint[](n, iy, ix, c), value);
+
+        acc = OUT_T(value);
+    }
+
+    tensorWriteARM(outputData, uint[](n, oy, ox, c), acc);
+}

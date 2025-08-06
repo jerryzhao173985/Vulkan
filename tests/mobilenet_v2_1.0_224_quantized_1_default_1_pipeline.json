@@ -1,0 +1,37 @@
+{
+  "model_name": "mobilenet_v2_1.0_224_quantized_1_default_1",
+  "stages": [
+    {
+      "name": "conv1",
+      "type": "CONV_2D",
+      "shader": "conv2d.spv",
+      "dispatch": {
+        "x": 256,
+        "y": 256,
+        "z": 1
+      }
+    },
+    {
+      "name": "relu1",
+      "type": "RELU",
+      "shader": "relu.spv",
+      "dispatch": {
+        "x": 65536,
+        "y": 1,
+        "z": 1
+      }
+    },
+    {
+      "name": "fc1",
+      "type": "FULLY_CONNECTED",
+      "shader": "matmul.spv",
+      "dispatch": {
+        "x": 1024,
+        "y": 1,
+        "z": 1
+      }
+    }
+  ],
+  "buffers": [],
+  "shaders": []
+}

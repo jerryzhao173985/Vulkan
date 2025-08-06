@@ -1,0 +1,36 @@
+#version 450
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types : require
+
+// Optimized for Apple Silicon with shared memory
+#define TILE_SIZE 16
+#define PAD 1
+
+layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE) in;
+
+layout(set = 0, binding = 0) readonly buffer Input {
+    float16_t data[];
+} input_buffer;
+
+layout(set = 0, binding = 1) readonly buffer Filter {
+    float16_t data[];
+} filter_buffer;
+
+layout(set = 0, binding = 2) writeonly buffer Output {
+    float16_t data[];
+} output_buffer;
+
+layout(push_constant) uniform PushConstants {
+    uint input_h, input_w, input_c;
+    uint filter_h, filter_w;
+    uint output_h, output_w, output_c;
+    uint stride_h, stride_w;
+    uint pad_h, pad_w;
+} params;
+
+shared float16_t tile[TILE_SIZE + 2*PAD][TILE_SIZE + 2*PAD];
+
+void main() {
+    // Optimized convolution using shared memory tiles
+    // Implementation for Apple Silicon GPU
+}

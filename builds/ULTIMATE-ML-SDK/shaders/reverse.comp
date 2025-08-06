@@ -1,0 +1,31 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_OUT_T %in_out_t%
+
+layout(local_size_x = %warpX%) in;
+
+layout(push_constant) uniform PushConstants {
+    uint32_t axis;
+} pushConstants;
+
+layout(constant_id = 0) const uint32_t RANK = RANK_MAX;
+
+layout(set = 0, binding = 0) uniform tensorARM<IN_OUT_T, RANK> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_OUT_T, RANK> inputData;
+
+void main() {
+    uint[RANK] index;
+    getIndex(outputData, index);
+
+    uint[RANK] shape;
+    getShape(shape, outputData);
+
+    IN_OUT_T value;
+    tensorReadARM(inputData, index, value);
+
+    index[pushConstants.axis] = shape[pushConstants.axis] - 1 - index[pushConstants.axis];
+    tensorWriteARM(outputData, index, value);
+}

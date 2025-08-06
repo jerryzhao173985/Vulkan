@@ -1,0 +1,324 @@
+#!/bin/bash
+# Unified ARM ML SDK Management Tool
+# Single tool for all Git workflow operations
+
+VERSION="1.0.0"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Configuration
+GITHUB_USER="jerryzhao173985"
+SDK_ROOT="/Users/jerry/Vulkan"
+
+show_banner() {
+    echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║         ARM ML SDK for Vulkan - Management Tool           ║${NC}"
+    echo -e "${BLUE}║                    macOS ARM64 Edition                     ║${NC}"
+    echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+show_help() {
+    show_banner
+    echo "Usage: vulkan-ml-sdk <command> [options]"
+    echo ""
+    echo "Commands:"
+    echo "  ${GREEN}status${NC}      - Show status of all repositories"
+    echo "  ${GREEN}sync${NC}        - Sync all repos with upstream ARM"
+    echo "  ${GREEN}save${NC}        - Save all work (commit and push)"
+    echo "  ${GREEN}build${NC}       - Build the SDK"
+    echo "  ${GREEN}test${NC}        - Run tests"
+    echo "  ${GREEN}clean${NC}       - Clean build artifacts"
+    echo "  ${GREEN}setup${NC}       - Initial setup (only needed once)"
+    echo "  ${GREEN}branch${NC}      - Create feature branch"
+    echo "  ${GREEN}info${NC}        - Show SDK information"
+    echo "  ${GREEN}help${NC}        - Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  vulkan-ml-sdk status"
+    echo "  vulkan-ml-sdk save \"Fixed memory leak\""
+    echo "  vulkan-ml-sdk sync"
+    echo "  vulkan-ml-sdk branch feature/optimization"
+}
+
+# Check if we're in the right directory
+check_location() {
+    if [ "$PWD" != "$SDK_ROOT" ]; then
+        echo -e "${YELLOW}Switching to SDK root: $SDK_ROOT${NC}"
+        cd "$SDK_ROOT" || exit 1
+    fi
+}
+
+# Status command
+cmd_status() {
+    echo -e "${CYAN}=== Repository Status ===${NC}"
+    echo ""
+    
+    # Parent repo
+    echo -e "${BLUE}Parent Repository (Vulkan):${NC}"
+    git status --short
+    echo ""
+    
+    # Submodules
+    echo -e "${BLUE}Submodules:${NC}"
+    git submodule foreach '
+        echo -e "\033[0;33m$name:\033[0m"
+        git status --short
+        
+        # Check if synced with origin
+        LOCAL=$(git rev-parse @)
+        REMOTE=$(git rev-parse @{u} 2>/dev/null || echo "none")
+        
+        if [ "$REMOTE" = "none" ]; then
+            echo "  No upstream branch set"
+        elif [ "$LOCAL" = "$REMOTE" ]; then
+            echo -e "  \033[0;32m✓ Up to date\033[0m"
+        else
+            echo -e "  \033[0;33m! Not synced with origin\033[0m"
+        fi
+        echo ""
+    '
+}
+
+# Sync command
+cmd_sync() {
+    echo -e "${CYAN}=== Syncing with Upstream ARM Repositories ===${NC}"
+    echo ""
+    
+    git submodule foreach '
+        echo -e "\033[0;36mSyncing $name...\033[0m"
+        
+        # Fetch from upstream
+        if git remote get-url upstream &>/dev/null; then
+            echo "Fetching from upstream..."
+            if git fetch upstream; then
+                # Try to merge
+                git checkout main
+                if git merge upstream/main --no-edit; then
+                    echo -e "\033[0;32m✓ Merged upstream changes\033[0m"
+                    git push origin main
+                else
+                    echo -e "\033[0;31m✗ Merge conflicts - manual resolution needed\033[0m"
+                fi
+            else
+                echo -e "\033[0;33m! Could not fetch from upstream\033[0m"
+            fi
+        else
+            echo -e "\033[0;33m! No upstream remote configured\033[0m"
+        fi
+        echo ""
+    '
+}
+
+# Save command
+cmd_save() {
+    local message="${1:-Update from ARM ML SDK tool}"
+    
+    echo -e "${CYAN}=== Saving All Work ===${NC}"
+    echo ""
+    
+    # Save in submodules first
+    git submodule foreach "
+        if ! git diff-index --quiet HEAD 2>/dev/null; then
+            echo -e \"\033[0;36mSaving changes in \$name...\033[0m\"
+            git add -A
+            git commit -m \"$message\"
+            git push -u origin \$(git branch --show-current)
+        else
+            echo -e \"\033[0;32m✓ \$name is clean\033[0m\"
+        fi
+    "
+    
+    # Save parent repo
+    echo ""
+    echo -e "${CYAN}Saving parent repository...${NC}"
+    git add -A
+    git commit -m "Update submodules: $message" || echo "No changes in parent"
+    git push -u origin main
+    
+    echo -e "${GREEN}✓ All work saved${NC}"
+}
+
+# Build command
+cmd_build() {
+    echo -e "${CYAN}=== Building ARM ML SDK ===${NC}"
+    echo ""
+    
+    cd ai-ml-sdk-for-vulkan
+    
+    if [ -f "build_all_macos.sh" ]; then
+        ./build_all_macos.sh
+    else
+        echo "Running standard build..."
+        python3 ./scripts/build.py \
+            --build-type Release \
+            --threads 8 \
+            --build-dir build-macos
+    fi
+    
+    cd ..
+}
+
+# Test command
+cmd_test() {
+    echo -e "${CYAN}=== Running Tests ===${NC}"
+    echo ""
+    
+    cd ai-ml-sdk-for-vulkan
+    
+    if [ -d "build-macos/bin" ]; then
+        echo "Testing scenario-runner..."
+        ./build-macos/bin/scenario-runner --version
+    elif [ -d "build-final/bin" ]; then
+        ./build-final/bin/scenario-runner --version
+    else
+        echo -e "${RED}No build found. Run 'vulkan-ml-sdk build' first${NC}"
+    fi
+    
+    cd ..
+}
+
+# Clean command
+cmd_clean() {
+    echo -e "${CYAN}=== Cleaning Build Artifacts ===${NC}"
+    echo ""
+    
+    echo "Cleaning build directories..."
+    find . -type d -name "build*" -not -path "./.git/*" -exec rm -rf {} + 2>/dev/null
+    find . -name "*.o" -o -name "*.a" -delete 2>/dev/null
+    
+    echo -e "${GREEN}✓ Clean complete${NC}"
+}
+
+# Setup command
+cmd_setup() {
+    echo -e "${CYAN}=== Initial Setup ===${NC}"
+    echo ""
+    
+    echo "This will:"
+    echo "1. Verify all submodules are initialized"
+    echo "2. Set up Git remotes"
+    echo "3. Fetch from all remotes"
+    echo ""
+    
+    read -p "Continue? (y/n) " -n 1 -r
+    echo ""
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Initialize submodules
+        git submodule update --init --recursive
+        
+        # Sync submodule URLs
+        git submodule sync
+        
+        # Fetch all
+        git submodule foreach 'git fetch --all'
+        
+        echo -e "${GREEN}✓ Setup complete${NC}"
+    fi
+}
+
+# Branch command
+cmd_branch() {
+    local branch_name=$1
+    
+    if [ -z "$branch_name" ]; then
+        echo -e "${RED}Error: Please provide a branch name${NC}"
+        echo "Usage: vulkan-ml-sdk branch <branch-name>"
+        return 1
+    fi
+    
+    echo -e "${CYAN}=== Creating Feature Branch: $branch_name ===${NC}"
+    echo ""
+    
+    # Create in parent
+    git checkout -b "$branch_name"
+    
+    # Create in all submodules
+    git submodule foreach "git checkout -b $branch_name"
+    
+    echo -e "${GREEN}✓ Branch '$branch_name' created in all repositories${NC}"
+}
+
+# Info command
+cmd_info() {
+    show_banner
+    
+    echo -e "${CYAN}SDK Information:${NC}"
+    echo "  Version: $VERSION"
+    echo "  Location: $SDK_ROOT"
+    echo "  GitHub User: $GITHUB_USER"
+    echo ""
+    
+    echo -e "${CYAN}Repositories:${NC}"
+    echo "  Parent: https://github.com/$GITHUB_USER/Vulkan"
+    echo ""
+    echo "  Submodules:"
+    git submodule foreach 'echo "    $name → https://github.com/'$GITHUB_USER'/$name"' 2>/dev/null
+    echo ""
+    
+    echo -e "${CYAN}Build Status:${NC}"
+    if [ -f "ai-ml-sdk-for-vulkan/build-final/bin/scenario-runner" ]; then
+        echo -e "  ${GREEN}✓ SDK is built${NC}"
+        ai-ml-sdk-for-vulkan/build-final/bin/scenario-runner --version 2>/dev/null | head -5 | sed 's/^/  /'
+    else
+        echo -e "  ${YELLOW}! SDK not built${NC}"
+    fi
+}
+
+# Main command dispatcher
+main() {
+    # Always check location first
+    check_location
+    
+    case "${1:-help}" in
+        status)
+            cmd_status
+            ;;
+        sync)
+            cmd_sync
+            ;;
+        save)
+            cmd_save "$2"
+            ;;
+        build)
+            cmd_build
+            ;;
+        test)
+            cmd_test
+            ;;
+        clean)
+            cmd_clean
+            ;;
+        setup)
+            cmd_setup
+            ;;
+        branch)
+            cmd_branch "$2"
+            ;;
+        info)
+            cmd_info
+            ;;
+        help|--help|-h)
+            show_help
+            ;;
+        version|--version|-v)
+            echo "ARM ML SDK Tool v$VERSION"
+            ;;
+        *)
+            echo -e "${RED}Unknown command: $1${NC}"
+            echo "Run 'vulkan-ml-sdk help' for usage"
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function
+main "$@"

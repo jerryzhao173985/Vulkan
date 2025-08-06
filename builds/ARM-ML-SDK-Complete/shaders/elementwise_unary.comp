@@ -1,0 +1,158 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_OUT_T %in_out_t%
+
+layout(local_size_x = %warpX%) in;
+
+layout(constant_id = 0) const uint32_t RANK = RANK_MAX;
+
+layout(set = 0, binding = 0) uniform tensorARM<IN_OUT_T, RANK> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_OUT_T, RANK> inputData1;
+
+// Count leading zeros
+uint clz(int32_t value) {
+    uint i;
+
+    for (i = 0; i < 32; i++) {
+        if ((value & (1 << (31 - i))) != 0) {
+            break;
+        }
+    }
+
+    return i;
+}
+
+// Gaussian error function
+// https://en.wikipedia.org/wiki/Error_function
+//
+// Error function is an integral from 0 to x
+//   (2 / sqrt(pi)) * int(0, x) (exp(-t^2))
+//
+// The function is always calculated for positive x, with negatives handled through erf(-x) = erf(x).
+//
+// Uses different approximations for small and intermediate x, with an emprically determined cutoff at |x|=0.5.
+// For small x, we use the series expansion defined in 7.6.2 at https://dlmf.nist.gov/7.6#
+// (Digital Library of Mathematical Functions, NIST).
+// For intermediate x, we use an approximation of the complimentary error function erfc(x) = 1 - erf(x).
+// This approximation is described in section 5.2 in
+// Dia, Yaya D. (2023). "Approximate Incomplete Integrals, Application to Complementary Error Function".
+// SSRN Electronic Journal. doi:10.2139/ssrn.4487559. ISSN 1556-5068.
+//
+// Both approximations rely on erf(x) being closely related to exp(-x^2).
+// The approximation for small x uses a function f(x) such that erf(x) = f(x) exp(-x^2).
+// It then estimates f(x) by truncating it's Taylor expansion.
+// The intermediate x approximation defines for x > 0 a function M(x) where erfc(x) = 1 - erf(x) = M(x) exp(-x^2),
+// and uses a multi point Padé approximation for M(x).
+//
+// For large x (|x| > 4.0), the value of erf(|x|) is equal to 1.0 in single precision, so we simply return +/- 1.0.
+//
+float erf(float x) {
+    // ==== Constant parameters begin ====
+    // Coefficients for for small x implementation
+    // Precomputed values of (2 / (2n + 1)) n from 12 to 1
+    const float coeffs[12] = float[](
+        0.08,                0.08695652173913043, 0.09523809523809523, 0.10526315789473684,
+        0.11764705882352941, 0.13333333333333333, 0.15384615384615385, 0.18181818181818182,
+        0.22222222222222222, 0.28571428571428571, 0.4,                 0.66666666666666666
+    );
+
+    // dividing by sqrt(Pi) gives gives better accuracy than precomputing 1 / sqrtPi and multiplying
+    const float sqrtPi = 1.7724538509055159;
+
+    // Implementation for large x
+    // Numerator quadratics
+    const vec2[5] pCoeffs = vec2[](
+        vec2(3.47469513777439592, 12.07402036406381411),
+        vec2(4.00561509202259545,  9.30596659485887898),
+        vec2(5.95908795446633271,  9.19435612886969243),
+        vec2(5.16722705817812584,  9.12661617673673262),
+        vec2(2.71078540045147805,  5.80755613130301624)
+    );
+
+    // Denominator quadratics
+    const vec2[5] qCoeffs = vec2[](
+        vec2(3.47954057099518960, 12.06166887286239555),
+        vec2(3.72068443960225092,  8.44319781003968454),
+        vec2(3.90225704029924078,  6.36161630953880464),
+        vec2(4.03296893109262491,  5.13578530585681539),
+        vec2(4.11240942957450885,  4.48640329523408675)
+    );
+
+    // Lower order quotient polynomials
+    const float p_0 = 0.56418958354775629;
+    const float q_0 = 2.06955023132914151;
+
+    // Cutoffs
+    const float cutoff_low = 0.6;  // for deciding which approximation to use
+    const float cutoff_high = 4.0; // above this value, erf(x) == 1.0 for float precision
+
+    // ==== Constant parameters end ====
+
+    const float s = sign(x);
+    x = abs(x); // Always calculate erf(|x|)
+
+    if (x > cutoff_high){
+        // Large x; also catches inf
+        return s; // returns +/- 1.0
+    }
+
+    // x squared; reused extensively
+    const float x2 = x * x;
+
+    if (x < cutoff_low){
+        // Small x
+        float tot = 1.0;
+        // Calculate the sum of (2^n x^(2n+1) / (2n + 1)!!) for n from 1 to coeffs.length(),
+        // where (2n + 1)!! = 1 * 3 * 5 * ... * (2n + 1).
+        // This is the Taylor expansion (up to a rescaling) of erf(x) / exp(-x^2) around x = 0
+        for (int i = 0; i < coeffs.length(); i++){
+            tot = 1.0 + tot * coeffs[i] * x2;
+        }
+        tot *= 2.0 * x * exp(-x2);
+        tot /= sqrtPi;
+
+        return s * tot;
+    }
+
+    // Intermediate x
+    // Estimate the complimentary error function erfc(x) = 1 - erf(x) from a Padé approximation of erfc(x) / exp(-x^2).
+    // The numerator and denominator polynomials have been factorized into quadratic (or lower) factors.
+    const vec3 terms = vec3(x2, x, 1.0); // Use vec3 for fast evaluation of the quadratic polynomial factors.
+    float prod = p_0 / (x + q_0);
+    for (int i = 0; i < pCoeffs.length(); i++) {
+        float p = dot(terms, vec3(1.0, pCoeffs[i])); // numerator polynomial
+        float q = dot(terms, vec3(1.0, qCoeffs[i])); // denominator polynomial
+        prod *= p / q;
+    }
+    prod = 1.0 - prod * exp(-x2);
+    return s * prod;
+}
+
+float tanh_clamped(float x)
+{
+    if(x > 10.0){
+        return 1.0;
+    }
+    if(x < -10.0){
+        return -1.0;
+    }
+    return tanh(x);
+}
+
+float log_guarded(float x) {
+    return x < 0.0 ? NAN : log(x);
+}
+
+void main() {
+    uint[RANK] index;
+    getIndex(outputData, index);
+
+    IN_OUT_T value1;
+    tensorReadARM(inputData1, index, value1);
+
+    IN_OUT_T value = isnan(float(value1)) ? IN_OUT_T(value1) : IN_OUT_T(%operation%);
+    tensorWriteARM(outputData, index, value);
+}

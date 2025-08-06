@@ -1,0 +1,16 @@
+{
+  "name": "NaN_Handling",
+  "description": "Test NaN propagation",
+  "operations": [
+    {
+      "type": "add",
+      "input_data": "contains_nan",
+      "input_shapes": [
+        [
+          1,
+          100
+        ]
+      ]
+    }
+  ]
+}

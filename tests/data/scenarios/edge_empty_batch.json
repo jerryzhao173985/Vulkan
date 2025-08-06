@@ -1,0 +1,17 @@
+{
+  "name": "Empty_Batch",
+  "description": "Test with zero batch size",
+  "operations": [
+    {
+      "type": "conv2d",
+      "input_shapes": [
+        [
+          0,
+          224,
+          224,
+          3
+        ]
+      ]
+    }
+  ]
+}

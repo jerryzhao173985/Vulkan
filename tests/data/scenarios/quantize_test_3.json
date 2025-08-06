@@ -1,0 +1,42 @@
+{
+  "name": "Test_quantize_3",
+  "description": "Test scenario for quantize operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "quantize",
+      "config": {
+        "dtype": "uint8",
+        "symmetric": false,
+        "scale": 0.1,
+        "zero_point": 128,
+        "input_shapes": [
+          [
+            1,
+            224,
+            224,
+            3
+          ]
+        ]
+      },
+      "input_shapes": [
+        [
+          1,
+          224,
+          224,
+          3
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

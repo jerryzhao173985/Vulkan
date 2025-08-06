@@ -1,0 +1,10 @@
+#version 450
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) readonly buffer Src { float data[]; } src;
+layout(set = 0, binding = 1) writeonly buffer Dst { float data[]; } dst;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    dst.data[idx] = src.data[idx];
+}

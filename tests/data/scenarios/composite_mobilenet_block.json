@@ -1,0 +1,61 @@
+{
+  "name": "MobileNet_Block",
+  "description": "MobileNet-style inverted residual block",
+  "operations": [
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          1,
+          1
+        ],
+        "stride": [
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "type": "batchnorm"
+    },
+    {
+      "type": "relu"
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ],
+        "stride": [
+          2,
+          2
+        ],
+        "groups": 32
+      }
+    },
+    {
+      "type": "batchnorm"
+    },
+    {
+      "type": "relu"
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          1,
+          1
+        ],
+        "stride": [
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "type": "batchnorm"
+    }
+  ]
+}

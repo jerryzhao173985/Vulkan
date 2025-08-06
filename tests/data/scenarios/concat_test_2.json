@@ -1,0 +1,63 @@
+{
+  "name": "Test_concat_2",
+  "description": "Test scenario for concat operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "concat",
+      "config": {
+        "axis": 2,
+        "input_shapes": [
+          [
+            1,
+            56,
+            56,
+            64
+          ],
+          [
+            1,
+            56,
+            56,
+            128
+          ],
+          [
+            1,
+            56,
+            56,
+            64
+          ]
+        ]
+      },
+      "input_shapes": [
+        [
+          1,
+          56,
+          56,
+          64
+        ],
+        [
+          1,
+          56,
+          56,
+          128
+        ],
+        [
+          1,
+          56,
+          56,
+          64
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

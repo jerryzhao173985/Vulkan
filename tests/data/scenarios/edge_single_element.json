@@ -1,0 +1,15 @@
+{
+  "name": "Single_Element",
+  "description": "Test with single element tensors",
+  "operations": [
+    {
+      "type": "relu",
+      "input_shapes": [
+        [
+          1,
+          1
+        ]
+      ]
+    }
+  ]
+}

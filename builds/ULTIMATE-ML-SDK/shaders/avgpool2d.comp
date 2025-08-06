@@ -1,0 +1,71 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_OUT_T %in_out_t%
+#define TYPE_IN_OUT %in_out_t_type%
+#define ACC_T %acc_t%
+#define MIN %in_out_t_lowest%
+#define MAX %in_out_t_max%
+
+layout(local_size_x = %warpX%) in;
+
+layout(push_constant) uniform PushConstants {
+    int32_t kernel[2];
+    int32_t stride[2];
+    int32_t pad[4];
+    int32_t inputZeroPoint;
+    int32_t outputZeroPoint;
+} pushConstants;
+
+layout(set = 0, binding = 0) uniform tensorARM<IN_OUT_T, 4> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_OUT_T, 4> inputData;
+
+void main() {
+    uint[4] index;
+    getIndex4(outputData, index);
+
+    uint on = index[0];
+    uint oy = index[1];
+    uint ox = index[2];
+    uint oc = index[3];
+
+    ACC_T acc = ACC_T(0);
+    uint32_t count = uint32_t(0);
+
+    uint iy = oy * pushConstants.stride[0] - pushConstants.pad[0];
+    uint ix = ox * pushConstants.stride[1] - pushConstants.pad[2];
+
+    for (uint ky = 0; ky < pushConstants.kernel[0]; ky++) {
+        for (uint kx = 0; kx < pushConstants.kernel[1]; kx++) {
+            uint y = iy + ky;
+            uint x = ix + kx;
+
+            if (y < tensorSizeARM(inputData, 1) && x < tensorSizeARM(inputData, 2)) {
+                uint[4] index = uint[](on, y, x, oc);
+                IN_OUT_T value;
+                tensorReadARM(inputData, index, value);
+
+                acc += ACC_T(value) - ACC_T(pushConstants.inputZeroPoint);
+                count++;
+            }
+        }
+    }
+
+#if IS_FLOAT(TYPE_IN_OUT)
+    acc /= ACC_T(count);
+#else
+    // Divide and round
+    ACC_T round = acc < 0 ? -ACC_T(count >> 1) : ACC_T(count >> 1);
+    acc = (acc + round) / ACC_T(count);
+
+    // Add output zero point
+    acc += ACC_T(pushConstants.outputZeroPoint);
+
+    // Clamp to output range
+    acc = clamp(acc, MIN, MAX);
+#endif
+
+    tensorWriteARM(outputData, index, IN_OUT_T(acc));
+}

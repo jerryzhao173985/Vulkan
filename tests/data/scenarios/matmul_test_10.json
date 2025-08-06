@@ -1,0 +1,51 @@
+{
+  "name": "Test_matmul_10",
+  "description": "Test scenario for matmul operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "matmul",
+      "config": {
+        "m": 768,
+        "n": 1024,
+        "k": 512,
+        "input_shapes": [
+          [
+            1,
+            768,
+            512
+          ],
+          [
+            1,
+            512,
+            1024
+          ]
+        ],
+        "transpose_a": false,
+        "transpose_b": false
+      },
+      "input_shapes": [
+        [
+          1,
+          768,
+          512
+        ],
+        [
+          1,
+          512,
+          1024
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

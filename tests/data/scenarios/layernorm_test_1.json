@@ -1,0 +1,42 @@
+{
+  "name": "Test_layernorm_1",
+  "description": "Test scenario for layernorm operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "layernorm",
+      "config": {
+        "num_features": 64,
+        "eps": 1e-05,
+        "momentum": 0.1,
+        "input_shapes": [
+          [
+            8,
+            56,
+            56,
+            64
+          ]
+        ],
+        "training": false
+      },
+      "input_shapes": [
+        [
+          8,
+          56,
+          56,
+          64
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

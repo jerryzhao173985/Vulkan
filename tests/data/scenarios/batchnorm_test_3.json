@@ -1,0 +1,42 @@
+{
+  "name": "Test_batchnorm_3",
+  "description": "Test scenario for batchnorm operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "batchnorm",
+      "config": {
+        "num_features": 256,
+        "eps": 1e-05,
+        "momentum": 0.1,
+        "input_shapes": [
+          [
+            8,
+            56,
+            56,
+            256
+          ]
+        ],
+        "training": false
+      },
+      "input_shapes": [
+        [
+          8,
+          56,
+          56,
+          256
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

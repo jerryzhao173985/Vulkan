@@ -1,0 +1,55 @@
+R"(
+/*
+ * SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+#version 460
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+
+#define RANK_MAX 6
+
+#define TYPE %type%
+#define TYPE_SIZE %type_size%
+
+layout(local_size_x = %warpX%) in;
+
+layout(constant_id = 0) const uint32_t RANK = RANK_MAX;
+
+layout(binding = 0) buffer InputData {
+    TYPE inputData[];
+};
+
+layout(binding = 1) buffer OutputData {
+    TYPE outputData[];
+};
+
+layout(push_constant) uniform PushConstants {
+    int64_t dimensions[RANK_MAX];
+    uint64_t srcStrides[RANK_MAX];
+    uint64_t dstStrides[RANK_MAX];
+} pushConstants;
+
+void main() {
+    uint64_t offset = gl_GlobalInvocationID.x;
+
+    uint64_t[RANK] coords;
+    uint64_t srcOffset = 0;
+    uint64_t dstOffset = 0;
+
+    for(int i = int(RANK - 1); i >= 0; i--) {
+        uint64_t coord = offset % pushConstants.dimensions[i];
+        offset /= pushConstants.dimensions[i];
+        srcOffset += coord * pushConstants.srcStrides[i];
+        dstOffset += coord * pushConstants.dstStrides[i];
+    }
+
+    if (offset > 0) {
+        return;
+    }
+
+    srcOffset /= TYPE_SIZE;
+    dstOffset /= TYPE_SIZE;
+
+    outputData[uint(dstOffset)] = inputData[uint(srcOffset)];
+}
+)"

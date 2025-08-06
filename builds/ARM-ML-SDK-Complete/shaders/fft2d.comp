@@ -1,0 +1,53 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+layout(local_size_x = %warpX%) in;
+
+layout(push_constant) uniform PushConstants {
+    float signValue;
+} pushConstants;
+
+layout(set = 0, binding = 0) uniform tensorARM<float, 3> outputRealData;
+layout(set = 1, binding = 0) uniform tensorARM<float, 3> outputImagData;
+layout(set = 2, binding = 0) uniform tensorARM<float, 3> inputRealData;
+layout(set = 3, binding = 0) uniform tensorARM<float, 3> inputImagData;
+
+void main() {
+    uint[3] index;
+    getIndex3(outputRealData, index);
+
+    const uint[3] shape = {
+        tensorSizeARM(outputRealData, 0),
+        tensorSizeARM(outputRealData, 1),
+        tensorSizeARM(outputRealData, 2),
+    };
+
+    uint on = index[0];
+    uint oy = index[1];
+    uint ox = index[2];
+
+    double sumReal = 0.0;
+    double sumImag = 0.0;
+
+    for (uint iy = 0; iy < shape[1]; iy++) {
+        for (uint ix = 0; ix < shape[2]; ix += 4) {
+            vec4 ixs = vec4(ix, ix + 1, ix + 2, ix + 3);
+            float valueReal[4];
+            tensorReadARM(inputRealData, uint[](on, iy, ix), valueReal);
+            vec4 valueRealVec = vec4(valueReal[0], valueReal[1], valueReal[2], valueReal[3]);
+
+            float valueImag[4];
+            tensorReadARM(inputImagData, uint[](on, iy, ix), valueImag);
+            vec4 valueImagVec = vec4(valueImag[0], valueImag[1], valueImag[2], valueImag[3]);
+
+            vec4 angles = pushConstants.signValue * 2.0f * PI * (float(iy * oy) / shape[1] + ixs * ox / shape[2]);
+            sumReal += dot(valueRealVec, cos(angles)) + dot(valueImagVec, sin(angles));
+            sumImag += -dot(valueRealVec, sin(angles)) + dot(valueImagVec, cos(angles));
+        }
+    }
+
+    tensorWriteARM(outputRealData, index, float(sumReal));
+    tensorWriteARM(outputImagData, index, float(sumImag));
+}

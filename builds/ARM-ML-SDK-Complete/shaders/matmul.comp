@@ -1,0 +1,60 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_T %in_t%
+#define OUT_T %out_t%
+#define TYPE_OUT %out_t_type%
+
+#if TYPE_OUT == TYPE_INT64
+    #define VEC4 dvec4
+#elif TYPE_OUT == TYPE_INT32
+    #define VEC4 ivec4
+#else
+    #define VEC4 vec4
+#endif
+
+layout(local_size_x = %warpX%) in;
+
+layout(push_constant) uniform PushConstants {
+    int32_t inputZeroPoint1;
+    int32_t inputZeroPoint2;
+} pushConstants;
+
+layout(set = 0, binding = 0) uniform tensorARM<OUT_T, 3> outputData;   // [N, H, W]
+layout(set = 1, binding = 0) uniform tensorARM<IN_T, 3> inputData1;    // [N, H, C]
+layout(set = 2, binding = 0) uniform tensorARM<IN_T, 3> inputData2;    // [N, C, W]
+
+void main() {
+    uint[3] index;
+    getIndex3(outputData, index);
+
+    uint on = index[0];
+    uint oy = index[1];
+    uint ox = index[2];
+
+    OUT_T acc = OUT_T(0);
+
+    const uint IC = tensorSizeARM(inputData1, 2);
+    for (uint c = 0; c < IC; c += 4) {
+        IN_T value1[4];
+        tensorReadARM(inputData1, uint[](on, oy, c), value1);
+
+        IN_T value20, value21, value22, value23;
+        tensorReadARM(inputData2, uint[](on, c, ox), value20);
+        tensorReadARM(inputData2, uint[](on, c + 1, ox), value21);
+        tensorReadARM(inputData2, uint[](on, c + 2, ox), value22);
+        tensorReadARM(inputData2, uint[](on, c + 3, ox), value23);
+
+        VEC4 val1 = VEC4(value1[0], value1[1], value1[2], value1[3]) - pushConstants.inputZeroPoint1;
+        VEC4 val2 = VEC4(value20, value21, value22, value23) - pushConstants.inputZeroPoint2;
+        VEC4 mul = val1 * val2;
+
+        for (uint idx = 0; idx < 4 && c + idx < IC; ++idx) {
+            acc += OUT_T(mul[idx]);
+        }
+    }
+
+    tensorWriteARM(outputData, index, acc);
+}

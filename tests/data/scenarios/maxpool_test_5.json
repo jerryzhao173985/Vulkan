@@ -1,0 +1,47 @@
+{
+  "name": "Test_maxpool_5",
+  "description": "Test scenario for maxpool operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "maxpool",
+      "config": {
+        "pool_size": [
+          3,
+          3
+        ],
+        "stride": [
+          1,
+          1
+        ],
+        "padding": "same",
+        "input_shapes": [
+          [
+            1,
+            224,
+            224,
+            64
+          ]
+        ]
+      },
+      "input_shapes": [
+        [
+          1,
+          224,
+          224,
+          64
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

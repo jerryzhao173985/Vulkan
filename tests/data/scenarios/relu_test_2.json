@@ -1,0 +1,35 @@
+{
+  "name": "Test_relu_2",
+  "description": "Test scenario for relu operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "relu",
+      "config": {
+        "input_shapes": [
+          [
+            8,
+            512
+          ]
+        ],
+        "negative_slope": 0.01
+      },
+      "input_shapes": [
+        [
+          8,
+          512
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}

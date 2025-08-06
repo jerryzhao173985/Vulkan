@@ -1,0 +1,72 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+layout(local_size_x = %warpX%) in;
+
+layout(set = 0, binding = 0) uniform tensorARM<float, 3> outputRealData;
+layout(set = 1, binding = 0) uniform tensorARM<float, 3> outputImagData;
+layout(set = 2, binding = 0) uniform tensorARM<float, 3> inputData;
+
+void main() {
+    uint[3] index;
+    getIndex3(outputRealData, index);
+
+    uint on = index[0];
+    uint oy = index[1];
+    uint ox = index[2];
+    uint N = tensorSizeARM(inputData, 0);
+    uint H = tensorSizeARM(inputData, 1);
+    uint W = tensorSizeARM(inputData, 2);
+
+    // Use Kahan summation to counteract cumulative errors in float summation
+    float sumReal = 0.0;
+    float sumImag = 0.0;
+    precise float errorReal = 0.0;
+    precise float errorImag = 0.0;
+
+    bool skipImag = false;
+    if (oy == 0 && (ox == 0 || ox == (W / 2))) {
+        skipImag = true;
+    } else if (oy == (H / 2) && (ox == 0 || ox == (W / 2))) {
+        skipImag = true;
+    }
+
+    for (uint iy = 0; iy < H; iy++) {
+        for (uint ix = 0; ix < W; ix += 4) {
+            vec4 ixs = vec4(ix, ix + 1, ix + 2, ix + 3);
+
+            float valueReal[4];
+            tensorReadARM(inputData, uint[](on, iy, ix), valueReal);
+            vec4 valueRealVec = vec4(valueReal[0], valueReal[1], valueReal[2], valueReal[3]);
+
+            // Angles are fractional multiples of 2 pi with a fixed denominator.
+            // Taking the numerators modulo the denominator maps the fractions to the range [0, 1),
+            // giving angles in [0, 2 pi).
+            // Mathematically this gives the same result for sin and cos but numerically it is
+            // more accurate since we avoid large angles.
+            vec4 angles = 2.0 * PI * mod(iy * oy * W + ixs * ox * H, W * H) / (W * H);
+
+            // Compute next term in the sum and subtract the accumulated error from it
+            float termReal = dot(valueRealVec, cos(angles)) - errorReal;
+            // Compute new sum
+            precise float sumNewReal = sumReal + termReal;
+            // Compute new error; algebraically this is always 0
+            errorReal = (sumNewReal - sumReal) - termReal;
+            // Update sum
+            sumReal = sumNewReal;
+
+            if (!skipImag){
+                float termImag = dot(valueRealVec, -sin(angles)) - errorImag;
+                precise float sumNewImag = sumImag + termImag;
+                errorImag = (sumNewImag - sumImag) - termImag;
+                sumImag = sumNewImag;
+            }
+        }
+    }
+
+    // Write output
+    tensorWriteARM(outputRealData, index, sumReal);
+    tensorWriteARM(outputImagData, index, sumImag);
+}

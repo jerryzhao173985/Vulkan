@@ -1,0 +1,48 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_OUT_T %in_out_t%
+
+layout(local_size_x = %warpX%) in;
+
+layout(push_constant) uniform PushConstants {
+    double padConst;
+} pushConstants;
+
+layout(constant_id = 0) const uint32_t RANK = RANK_MAX;
+
+layout(set = 0, binding = 0) uniform tensorARM<IN_OUT_T, RANK> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_OUT_T, RANK> inputData;
+layout(set = 2, binding = 0) uniform tensorARM<int32_t, 1> paddingData;
+
+void main() {
+    uint[RANK] index;
+    getIndex(outputData, index);
+
+    uint[RANK] inputShape;
+    getShape(inputShape, inputData);
+
+    uint[RANK] inputIndex;
+    bool isPad = false;
+    for (uint i = 0; i < RANK; i++) {
+        int32_t padding;
+        tensorReadARM(paddingData, uint[1](2*i), padding);
+
+        inputIndex[i] = index[i] - padding;
+        if (inputIndex[i] >= inputShape[i]) {
+            isPad = true;
+            break;
+        }
+    }
+
+    IN_OUT_T value;
+    if (isPad) {
+        value = IN_OUT_T(pushConstants.padConst);
+    } else {
+        tensorReadARM(inputData, inputIndex, value);
+    }
+
+    tensorWriteARM(outputData, index, value);
+}

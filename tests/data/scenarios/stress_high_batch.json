@@ -1,0 +1,17 @@
+{
+  "name": "High_Batch",
+  "description": "High batch size test",
+  "operations": [
+    {
+      "type": "conv2d",
+      "input_shapes": [
+        [
+          128,
+          224,
+          224,
+          3
+        ]
+      ]
+    }
+  ]
+}

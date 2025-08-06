@@ -1,0 +1,20 @@
+{
+  "name": "Large_Values",
+  "description": "Test with very large values",
+  "operations": [
+    {
+      "type": "relu",
+      "input_data": "large",
+      "input_shapes": [
+        [
+          1,
+          1000
+        ]
+      ],
+      "input_range": [
+        1000000.0,
+        10000000.0
+      ]
+    }
+  ]
+}

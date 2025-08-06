@@ -1,0 +1,62 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#define IN_OUT_T %in_out_t%
+#define TYPE_IN_OUT %in_out_t_type%
+
+layout(local_size_x = %warpX%) in;
+
+layout(push_constant) uniform PushConstants {
+    uint kernel[2];
+    uint stride[2];
+    uint pad[4];
+    uint nanMode;
+} pushConstants;
+
+layout(set = 0, binding = 0) uniform tensorARM<IN_OUT_T, 4> outputData;
+layout(set = 1, binding = 0) uniform tensorARM<IN_OUT_T, 4> inputData;
+
+void main() {
+    uint[4] index;
+    getIndex4(outputData, index);
+
+    IN_OUT_T acc = IN_OUT_T(%in_out_t_lowest%);
+    uint on = index[0];
+    uint oy = index[1];
+    uint ox = index[2];
+    uint oc = index[3];
+
+    uint iy = oy * pushConstants.stride[0] - pushConstants.pad[0];
+    uint ix = ox * pushConstants.stride[1] - pushConstants.pad[2];
+
+    for (uint ky = 0; ky < pushConstants.kernel[0]; ky++) {
+        for (int kx = 0; kx < pushConstants.kernel[1]; kx++) {
+            uint y = iy + ky;
+            uint x = ix + kx;
+
+            if (y < tensorSizeARM(inputData, 1) && x < tensorSizeARM(inputData, 2)) {
+                IN_OUT_T value;
+                tensorReadARM(inputData, uint[](on, y, x, oc), value);
+
+#if IS_FLOAT(TYPE_IN_OUT)
+                if (isnan(value)) {
+                    if (pushConstants.nanMode == NAN_MODE_IGNORE) {
+                        // Ignore value and continue
+                        continue;
+                    }
+                    else {
+                        // If any value is NaN, then the result must be NaN
+                        tensorWriteARM(outputData, index, value);
+                        return;
+                    }
+                }
+#endif
+                acc = max(acc, value);
+            }
+        }
+    }
+
+    tensorWriteARM(outputData, index, acc);
+}

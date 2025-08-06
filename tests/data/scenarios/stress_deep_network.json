@@ -1,0 +1,906 @@
+{
+  "name": "Deep_Network",
+  "description": "Very deep network simulation",
+  "operations": [
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    },
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          3,
+          3
+        ]
+      }
+    }
+  ]
+}

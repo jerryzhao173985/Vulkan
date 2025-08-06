@@ -1,0 +1,25 @@
+{
+  "name": "Large_Conv2D",
+  "description": "Very large convolution",
+  "operations": [
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          11,
+          11
+        ],
+        "in_channels": 512,
+        "out_channels": 512
+      },
+      "input_shapes": [
+        [
+          1,
+          512,
+          512,
+          512
+        ]
+      ]
+    }
+  ]
+}

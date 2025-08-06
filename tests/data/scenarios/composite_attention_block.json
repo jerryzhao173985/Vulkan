@@ -1,0 +1,24 @@
+{
+  "name": "Attention_Block",
+  "description": "Simplified attention mechanism",
+  "operations": [
+    {
+      "type": "matmul"
+    },
+    {
+      "type": "multiply",
+      "config": {
+        "alpha": 0.125
+      }
+    },
+    {
+      "type": "softmax",
+      "config": {
+        "axis": -1
+      }
+    },
+    {
+      "type": "matmul"
+    }
+  ]
+}

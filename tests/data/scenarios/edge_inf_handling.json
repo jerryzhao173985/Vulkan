@@ -1,0 +1,16 @@
+{
+  "name": "Inf_Handling",
+  "description": "Test infinity handling",
+  "operations": [
+    {
+      "type": "multiply",
+      "input_data": "contains_inf",
+      "input_shapes": [
+        [
+          1,
+          100
+        ]
+      ]
+    }
+  ]
+}

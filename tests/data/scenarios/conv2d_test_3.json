@@ -1,0 +1,51 @@
+{
+  "name": "Test_conv2d_3",
+  "description": "Test scenario for conv2d operation",
+  "version": "1.0",
+  "operations": [
+    {
+      "type": "conv2d",
+      "config": {
+        "kernel_size": [
+          1,
+          1
+        ],
+        "stride": [
+          1,
+          1
+        ],
+        "padding": "valid",
+        "in_channels": 32,
+        "out_channels": 64,
+        "input_shapes": [
+          [
+            1,
+            224,
+            224,
+            32
+          ]
+        ],
+        "activation": "relu",
+        "use_bias": true
+      },
+      "input_shapes": [
+        [
+          1,
+          224,
+          224,
+          32
+        ]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
+    }
+  ],
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
+  }
+}
