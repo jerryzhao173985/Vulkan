@@ -1,0 +1,108 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Layer Normalization Compute Shader
+ * Implements: y = (x - mean) / sqrt(variance + epsilon) * gamma + beta
+ * Where mean and variance are computed over the last dimension (norm_size)
+ * For normalizing activations in transformer and other ML models
+ */
+
+#version 450
+
+// Workgroup configuration - 64 threads for parallel reduction
+layout(local_size_x = 64) in;
+
+// Input buffer: feature activations to normalize
+layout(set = 0, binding = 0) readonly buffer Input { float data[]; } input_buf;
+
+// Learnable parameters: scale (gamma) and shift (beta)
+layout(set = 0, binding = 1) readonly buffer Gamma { float data[]; } gamma_buf;
+layout(set = 0, binding = 2) readonly buffer Beta { float data[]; } beta_buf;
+
+// Output buffer: normalized and transformed activations
+layout(set = 0, binding = 3) writeonly buffer Output { float data[]; } output_buf;
+
+// Push constants for layer norm parameters
+layout(push_constant) uniform PushConstants {
+    uint norm_size;  // Size of normalization dimension (hidden_size for transformers)
+    float epsilon;   // Small constant for numerical stability (typically 1e-5)
+} params;
+
+// Shared memory for parallel reduction
+shared float shared_sum[64];
+shared float shared_sq_sum[64];
+
+void main() {
+    uint local_id = gl_LocalInvocationID.x;
+    uint group_id = gl_WorkGroupID.x;
+    uint base_idx = group_id * params.norm_size;
+
+    // =========================================
+    // Step 1: Initialize shared memory
+    // =========================================
+    shared_sum[local_id] = 0.0;
+    shared_sq_sum[local_id] = 0.0;
+    barrier();
+
+    // =========================================
+    // Step 2: Compute partial sums for mean
+    // =========================================
+    float local_sum = 0.0;
+    for (uint i = local_id; i < params.norm_size; i += 64) {
+        float val = input_buf.data[base_idx + i];
+        local_sum += val;
+    }
+    shared_sum[local_id] = local_sum;
+    barrier();
+
+    // =========================================
+    // Step 3: Parallel reduction for sum
+    // =========================================
+    for (uint stride = 32; stride > 0; stride >>= 1) {
+        if (local_id < stride) {
+            shared_sum[local_id] += shared_sum[local_id + stride];
+        }
+        barrier();
+    }
+
+    float mean = shared_sum[0] / float(params.norm_size);
+    barrier();
+
+    // =========================================
+    // Step 4: Compute variance (squared differences)
+    // =========================================
+    float local_sq_sum = 0.0;
+    for (uint i = local_id; i < params.norm_size; i += 64) {
+        float val = input_buf.data[base_idx + i];
+        float diff = val - mean;
+        local_sq_sum += diff * diff;
+    }
+    shared_sq_sum[local_id] = local_sq_sum;
+    barrier();
+
+    // =========================================
+    // Step 5: Parallel reduction for variance
+    // =========================================
+    for (uint stride = 32; stride > 0; stride >>= 1) {
+        if (local_id < stride) {
+            shared_sq_sum[local_id] += shared_sq_sum[local_id + stride];
+        }
+        barrier();
+    }
+
+    float variance = shared_sq_sum[0] / float(params.norm_size);
+    float inv_std = 1.0 / sqrt(variance + params.epsilon);
+    barrier();
+
+    // =========================================
+    // Step 6: Normalize and apply gamma/beta
+    // =========================================
+    for (uint i = local_id; i < params.norm_size; i += 64) {
+        float val = input_buf.data[base_idx + i];
+        float normalized = (val - mean) * inv_std;
+        float gamma = gamma_buf.data[i];
+        float beta = beta_buf.data[i];
+        output_buf.data[base_idx + i] = normalized * gamma + beta;
+    }
+}

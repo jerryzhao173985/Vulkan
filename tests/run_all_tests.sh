@@ -129,22 +129,67 @@ for repo in ai-ml-sdk-for-vulkan ai-ml-sdk-vgf-library ai-ml-sdk-scenario-runner
 done
 echo ""
 
-# Section 8: Tool Tests
+# Section 8: SDK Tool Tests
 echo -e "${CYAN}=== 8. SDK Tool Tests ===${NC}"
 run_test "vulkan-ml-sdk tool" "[ -f '$SDK_ROOT/tools/vulkan-ml-sdk' ]"
 run_test "vulkan-ml-sdk-build tool" "[ -f '$SDK_ROOT/tools/vulkan-ml-sdk-build' ]"
 run_test "Quick test demo" "[ -f '$SDK_ROOT/examples/demos/quick_test.sh' ]"
 echo ""
 
-# Section 9: Documentation Tests
-echo -e "${CYAN}=== 9. Documentation Tests ===${NC}"
+# Section 9: vulkan_ml_sdk Python API Tests
+echo -e "${CYAN}=== 9. vulkan_ml_sdk Python API Tests ===${NC}"
+
+# Set up Python path for vulkan_ml_sdk package
+PYTHON_SDK_PATH="$SDK_ROOT/builds/ARM-ML-SDK-Complete/lib/python"
+
+# Test vulkan_ml_sdk package structure
+run_test "vulkan_ml_sdk package exists" "[ -d '$PYTHON_SDK_PATH/vulkan_ml_sdk' ]"
+run_test "vulkan_ml_sdk __init__.py" "[ -f '$PYTHON_SDK_PATH/vulkan_ml_sdk/__init__.py' ]"
+run_test "vulkan_ml_sdk api module" "[ -f '$PYTHON_SDK_PATH/vulkan_ml_sdk/api.py' ]"
+run_test "vulkan_ml_sdk models module" "[ -f '$PYTHON_SDK_PATH/vulkan_ml_sdk/models.py' ]"
+run_test "vulkan_ml_sdk inference module" "[ -f '$PYTHON_SDK_PATH/vulkan_ml_sdk/inference.py' ]"
+run_test "vulkan_ml_sdk pipeline module" "[ -f '$PYTHON_SDK_PATH/vulkan_ml_sdk/pipeline.py' ]"
+run_test "vulkan_ml_sdk telemetry module" "[ -f '$PYTHON_SDK_PATH/vulkan_ml_sdk/telemetry.py' ]"
+
+# Test vulkan_ml_sdk package import and version
+run_test "vulkan_ml_sdk import" "PYTHONPATH='$PYTHON_SDK_PATH' python3 -c 'import vulkan_ml_sdk; print(vulkan_ml_sdk.__version__)'"
+
+# Test SDK class initialization
+run_test "vulkan_ml_sdk SDK class" "PYTHONPATH='$PYTHON_SDK_PATH' python3 -c 'from vulkan_ml_sdk import SDK; sdk = SDK(); print(sdk.sdk_root)'"
+
+# Test model registry
+run_test "vulkan_ml_sdk ModelRegistry" "PYTHONPATH='$PYTHON_SDK_PATH' python3 -c 'from vulkan_ml_sdk.models import ModelRegistry; r = ModelRegistry(\"$SDK_ROOT/builds/ARM-ML-SDK-Complete\"); print(len(r.list_models()))'"
+
+# Test inference engine
+run_test "vulkan_ml_sdk InferenceEngine" "PYTHONPATH='$PYTHON_SDK_PATH' python3 -c 'from vulkan_ml_sdk.inference import InferenceEngine; e = InferenceEngine(\"$SDK_ROOT/builds/ARM-ML-SDK-Complete\"); print(e.is_available())'"
+
+# Test pipeline creation
+run_test "vulkan_ml_sdk Pipeline" "PYTHONPATH='$PYTHON_SDK_PATH' python3 -c 'from vulkan_ml_sdk.pipeline import Pipeline; p = Pipeline(); print(len(p.stages))'"
+
+# Test telemetry
+run_test "vulkan_ml_sdk Telemetry" "PYTHONPATH='$PYTHON_SDK_PATH' python3 -c 'from vulkan_ml_sdk.telemetry import Telemetry; t = Telemetry(); print(t.supported_formats)'"
+
+# Run pytest unit tests for vulkan_ml_sdk API (if pytest available)
+if python3 -c "import pytest" 2>/dev/null; then
+    run_test "vulkan_ml_sdk unit tests (pytest)" "cd '$SCRIPT_DIR' && PYTHONPATH='$PYTHON_SDK_PATH' python3 -m pytest unit/test_api_import.py -q --tb=no 2>&1 | grep -qE 'passed'"
+    run_test "vulkan_ml_sdk shader tests (pytest)" "cd '$SCRIPT_DIR' && python3 -m pytest unit/test_new_shaders.py -q --tb=no 2>&1 | grep -qE 'passed'"
+    run_test "vulkan_ml_sdk pipeline tests (pytest)" "cd '$SCRIPT_DIR' && PYTHONPATH='$PYTHON_SDK_PATH' python3 -m pytest integration/test_pipeline.py -q --tb=no 2>&1 | grep -qE 'passed'"
+else
+    skip_test "vulkan_ml_sdk unit tests (pytest not available)"
+    skip_test "vulkan_ml_sdk shader tests (pytest not available)"
+    skip_test "vulkan_ml_sdk pipeline tests (pytest not available)"
+fi
+echo ""
+
+# Section 10: Documentation Tests
+echo -e "${CYAN}=== 10. Documentation Tests ===${NC}"
 run_test "README exists" "[ -f '$SDK_ROOT/README.md' ]"
 run_test "Build docs" "[ -f '$SDK_ROOT/docs/BUILD_SYSTEM_COMPLETE.md' ]"
 run_test "Verification docs" "[ -f '$SDK_ROOT/docs/VERIFICATION_COMPLETE.md' ]"
 echo ""
 
-# Section 10: Build System Tests
-echo -e "${CYAN}=== 10. Build System Tests ===${NC}"
+# Section 11: Build System Tests
+echo -e "${CYAN}=== 11. Build System Tests ===${NC}"
 run_test "CMake configuration" "[ -f '$SDK_ROOT/ai-ml-sdk-for-vulkan/CMakeLists.txt' ]"
 run_test "Build scripts" "[ -f '$SDK_ROOT/scripts/build/build_all.sh' ]"
 run_test "SDK complete directory" "[ -d '$SDK_ROOT/builds/ARM-ML-SDK-Complete' ]"

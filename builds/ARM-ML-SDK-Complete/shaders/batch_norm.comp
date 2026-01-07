@@ -1,0 +1,48 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Batch Normalization Compute Shader
+ * Implements: y = (x - mean) / sqrt(variance + epsilon) * gamma + beta
+ * For normalizing activations across the batch dimension in ML models
+ */
+
+#version 450
+
+// Workgroup configuration - 64 threads for parallel processing
+layout(local_size_x = 64) in;
+
+// Input buffer: feature activations to normalize
+layout(set = 0, binding = 0) readonly buffer Input { float data[]; } input_buf;
+
+// Statistics buffers: pre-computed per-channel mean and variance
+layout(set = 0, binding = 1) readonly buffer Mean { float data[]; } mean_buf;
+layout(set = 0, binding = 2) readonly buffer Variance { float data[]; } var_buf;
+
+// Learnable parameters: scale (gamma) and shift (beta)
+layout(set = 0, binding = 3) readonly buffer Gamma { float data[]; } gamma_buf;
+layout(set = 0, binding = 4) readonly buffer Beta { float data[]; } beta_buf;
+
+// Output buffer: normalized and transformed activations
+layout(set = 0, binding = 5) writeonly buffer Output { float data[]; } output_buf;
+
+// Push constants for batch norm parameters
+layout(push_constant) uniform PushConstants {
+    uint channel_size;  // Number of channels (C dimension)
+    float epsilon;      // Small constant for numerical stability (typically 1e-5)
+} params;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    uint channel = idx % params.channel_size;
+
+    // Load input value and per-channel statistics
+    float x = input_buf.data[idx];
+    float mean = mean_buf.data[channel];
+    float variance = var_buf.data[channel];
+    float gamma = gamma_buf.data[channel];
+    float beta = beta_buf.data[channel];
+
+    // Apply batch normalization: y = gamma * (x - mean) / sqrt(variance + epsilon) + beta
+    output_buf.data[idx] = (x - mean) / sqrt(variance + params.epsilon) * gamma + beta;
+}

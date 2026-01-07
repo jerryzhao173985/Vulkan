@@ -369,6 +369,221 @@ All repositories forked under `github.com/jerryzhao173985/`:
 
 ---
 
+## 🐍 Python API Usage
+
+The `vulkan_ml_sdk` Python package provides a high-level interface for ML inference using Vulkan compute.
+
+### Installation
+
+```bash
+# Add the SDK to your Python path
+export PYTHONPATH=$PWD/builds/ARM-ML-SDK-Complete/lib/python:$PYTHONPATH
+```
+
+### Quick Start - 3 Lines of Code
+
+```python
+import vulkan_ml_sdk as vms
+
+sdk = vms.SDK()
+result = sdk.classify("/path/to/image.jpg")
+print(f"Predicted class: {result['top_class']}, Confidence: {result['confidence']:.2%}")
+```
+
+### Model Loading and Inference
+
+```python
+import vulkan_ml_sdk as vms
+
+# Initialize SDK (auto-detects GPU)
+sdk = vms.SDK()
+
+# List available models and shaders
+print("Available models:", sdk.list_models())
+print("Available shaders:", sdk.list_shaders())
+
+# Load a model for inference
+model = sdk.load_model("mobilenet_v2")
+print(f"Loaded: {model.name}, Size: {model.size} bytes")
+
+# Run inference
+result = model.infer({"input": image_data}, timeout_ms=30000, profiling=True)
+print(f"Success: {result.success}, Time: {result.execution_time_ms}ms")
+```
+
+### Image Classification
+
+```python
+import vulkan_ml_sdk as vms
+
+sdk = vms.SDK()
+
+# Classify from file path
+result = sdk.classify("/path/to/image.jpg", top_k=5)
+print(f"Top class: {result['top_class']}")
+print(f"Confidence: {result['confidence']:.2%}")
+print(f"Predictions: {result['predictions']}")
+
+# Or use the module-level convenience function
+result = vms.classify(image_array, model="fire_detection")
+```
+
+### Style Transfer
+
+```python
+import vulkan_ml_sdk as vms
+
+sdk = vms.SDK()
+
+# Apply La Muse style
+result = sdk.style_transfer("/path/to/photo.jpg", style="la_muse")
+
+# Available styles: la_muse, udnie, mirror, wave_crop, des_glaneuses
+result = sdk.style_transfer(image_array, style="udnie", output_size=(512, 512))
+
+print(f"Style: {result['style']}")
+print(f"Time: {result['execution_time_ms']:.0f}ms")
+
+# Access the stylized image
+stylized = result['stylized_image']  # numpy array
+```
+
+### Multi-Model Pipelines
+
+```python
+import vulkan_ml_sdk as vms
+from vulkan_ml_sdk.pipeline import Pipeline, PipelineStage
+
+sdk = vms.SDK()
+
+# Create a pipeline
+pipeline = sdk.create_pipeline("image_classifier", description="Classify images")
+
+# Add stages
+pipeline.add_stage(PipelineStage(
+    name="preprocess",
+    model="preprocessor",
+    inputs=["raw_image"],
+    outputs=["normalized"]
+))
+
+pipeline.add_stage(PipelineStage(
+    name="classify",
+    model="mobilenet_v2",
+    inputs=["normalized"],
+    outputs=["predictions"]
+))
+
+# Connect stages
+pipeline.connect("preprocess", "normalized", "classify", "normalized")
+
+# Validate and execute
+pipeline.validate()
+result = sdk.execute_pipeline(pipeline, {"raw_image": image_data})
+print(f"Pipeline success: {result.success}")
+print(f"Total time: {result.total_time_ms}ms")
+```
+
+### Simple Pipeline Creation
+
+```python
+import vulkan_ml_sdk as vms
+
+sdk = vms.SDK()
+
+# Create a sequential pipeline from model list
+pipeline = sdk.create_simple_pipeline(
+    "style_pipeline",
+    ["preprocessor", "la_muse", "postprocessor"]
+)
+
+# Execute
+result = sdk.execute_pipeline(pipeline, {"input_0": image_data})
+```
+
+### Pipeline Optimization
+
+```python
+from vulkan_ml_sdk.pipeline import Pipeline, OptimizationConfig
+
+# Create and configure pipeline
+pipeline = Pipeline(name="optimized_pipeline")
+# ... add stages ...
+
+# Apply optimizations
+config = OptimizationConfig(
+    enable_quantization=True,     # INT8 quantization
+    quantization_bits=8,
+    enable_fusion=True,           # Operator fusion
+    use_fp16=True,                # FP16 acceleration
+    use_simdgroup_operations=True # Apple Silicon optimization
+)
+
+result = pipeline.optimize(config)
+print(f"Estimated speedup: {result.estimated_speedup:.1f}x")
+print(f"Memory reduction: {result.memory_reduction:.0%}")
+```
+
+### Async Inference
+
+```python
+import vulkan_ml_sdk as vms
+
+sdk = vms.SDK()
+engine = sdk._get_inference_engine()
+
+# Submit async inference request
+future = engine.infer_async(
+    model_name="mobilenet_v2",
+    inputs={"input": image_data},
+    callback=lambda result: print(f"Done: {result.success}")
+)
+
+# Continue other work...
+
+# Wait for result when needed
+result = future.wait(timeout_ms=60000)
+```
+
+### Telemetry and Metrics
+
+```python
+import vulkan_ml_sdk as vms
+from vulkan_ml_sdk.telemetry import TelemetryCollector
+
+# Create collector
+collector = TelemetryCollector()
+collector.start()
+
+# Run inference (metrics collected automatically)
+sdk = vms.SDK()
+result = sdk.infer("mobilenet_v2", {"input": data})
+
+# Export metrics
+metrics = collector.export_json()
+print(metrics)
+
+# Export to Prometheus format
+prom_metrics = collector.export_prometheus()
+```
+
+### SDK Information
+
+```python
+import vulkan_ml_sdk as vms
+
+sdk = vms.SDK()
+
+# Get comprehensive SDK info
+info = sdk.get_info()
+print(f"SDK root: {info['sdk_root']}")
+print(f"Version: {info['version']}")
+print(f"Models: {info['resources']['model_count']}")
+print(f"Shaders: {info['resources']['shader_count']}")
+```
+
+---
+
 ## 📚 Documentation
 
 - **[Complete Journey Log](docs/journey/COMPLETE_DAY_JOURNEY_LOG.md)** - Full development history

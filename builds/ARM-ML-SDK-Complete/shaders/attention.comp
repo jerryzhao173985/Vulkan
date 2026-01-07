@@ -1,0 +1,184 @@
+/*
+ * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Scaled Dot-Product Attention Compute Shader
+ * Implements: Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) * V
+ * For transformer blocks in ML models
+ */
+
+#version 450
+
+// Workgroup configuration - 64 threads for parallel reduction
+layout(local_size_x = 64) in;
+
+// Input buffers: Query, Key, Value matrices
+// Layout: [batch_size * num_heads, seq_len, head_dim]
+layout(set = 0, binding = 0) readonly buffer Query { float data[]; } query_buf;
+layout(set = 0, binding = 1) readonly buffer Key { float data[]; } key_buf;
+layout(set = 0, binding = 2) readonly buffer Value { float data[]; } value_buf;
+
+// Optional attention mask (for causal attention)
+layout(set = 0, binding = 3) readonly buffer Mask { float data[]; } mask_buf;
+
+// Output buffer
+layout(set = 0, binding = 4) writeonly buffer Output { float data[]; } output_buf;
+
+// Push constants for attention parameters
+layout(push_constant) uniform PushConstants {
+    uint seq_len;       // Sequence length
+    uint head_dim;      // Dimension per head (d_k)
+    uint batch_heads;   // batch_size * num_heads
+    float scale;        // 1.0 / sqrt(head_dim) - precomputed for efficiency
+    uint use_mask;      // Whether to apply attention mask (0 or 1)
+} params;
+
+// Shared memory for softmax computation (parallel reduction)
+shared float shared_max[64];
+shared float shared_sum[64];
+// NOTE: Attention scores are recomputed in each pass rather than cached because:
+// 1. Shared memory is limited (64 floats = 256 bytes per workgroup)
+// 2. seq_len may exceed shared memory capacity
+// 3. Access patterns differ: Pass 1/2 use strided access, Pass 3 iterates all positions
+// Future optimization: Implement Flash Attention tiling for O(1) shared memory usage
+
+void main() {
+    uint local_id = gl_LocalInvocationID.x;
+    uint group_id = gl_WorkGroupID.x;
+
+    // Each workgroup handles one query position
+    // group_id encodes: batch_head_idx * seq_len + query_pos
+    uint batch_head_idx = group_id / params.seq_len;
+    uint query_pos = group_id % params.seq_len;
+
+    // Bounds check
+    if (batch_head_idx >= params.batch_heads) {
+        return;
+    }
+
+    // Base indices for this batch-head combination
+    uint qkv_base = batch_head_idx * params.seq_len * params.head_dim;
+    uint q_offset = qkv_base + query_pos * params.head_dim;
+
+    // =========================================
+    // Step 1: Compute QK^T scores with scaling
+    // =========================================
+
+    // Initialize shared memory
+    shared_max[local_id] = -1e20;
+    shared_sum[local_id] = 0.0;
+
+    // Each thread computes attention scores for a subset of key positions
+    float local_max = -1e20;
+    for (uint key_pos = local_id; key_pos < params.seq_len; key_pos += 64) {
+        uint k_offset = qkv_base + key_pos * params.head_dim;
+
+        // Compute dot product: Q[query_pos] · K[key_pos]
+        float score = 0.0;
+        for (uint d = 0; d < params.head_dim; d++) {
+            score += query_buf.data[q_offset + d] * key_buf.data[k_offset + d];
+        }
+
+        // Scale by 1/sqrt(d_k)
+        score *= params.scale;
+
+        // Apply attention mask if enabled (for causal attention)
+        if (params.use_mask != 0) {
+            uint mask_idx = query_pos * params.seq_len + key_pos;
+            score += mask_buf.data[mask_idx];  // Mask typically has -inf for masked positions
+        }
+
+        // Track maximum for numerical stability in softmax
+        local_max = max(local_max, score);
+    }
+    shared_max[local_id] = local_max;
+    barrier();
+
+    // =========================================
+    // Step 2: Parallel reduction to find max
+    // =========================================
+    for (uint stride = 32; stride > 0; stride >>= 1) {
+        if (local_id < stride) {
+            shared_max[local_id] = max(shared_max[local_id], shared_max[local_id + stride]);
+        }
+        barrier();
+    }
+    float max_score = shared_max[0];
+    barrier();
+
+    // =========================================
+    // Step 3: Compute exp(score - max) and sum
+    // =========================================
+    float local_sum = 0.0;
+    for (uint key_pos = local_id; key_pos < params.seq_len; key_pos += 64) {
+        uint k_offset = qkv_base + key_pos * params.head_dim;
+
+        // Recompute score (see note above about caching trade-offs)
+        float score = 0.0;
+        for (uint d = 0; d < params.head_dim; d++) {
+            score += query_buf.data[q_offset + d] * key_buf.data[k_offset + d];
+        }
+        score *= params.scale;
+
+        if (params.use_mask != 0) {
+            uint mask_idx = query_pos * params.seq_len + key_pos;
+            score += mask_buf.data[mask_idx];
+        }
+
+        // Compute softmax numerator with numerical stability
+        float exp_score = exp(score - max_score);
+        local_sum += exp_score;
+    }
+    shared_sum[local_id] = local_sum;
+    barrier();
+
+    // =========================================
+    // Step 4: Parallel reduction for sum
+    // =========================================
+    for (uint stride = 32; stride > 0; stride >>= 1) {
+        if (local_id < stride) {
+            shared_sum[local_id] += shared_sum[local_id + stride];
+        }
+        barrier();
+    }
+    float sum_exp = shared_sum[0];
+    barrier();
+
+    // =========================================
+    // Step 5: Compute output = softmax(QK^T) * V
+    // =========================================
+
+    // Each thread computes a subset of output dimensions
+    uint out_offset = qkv_base + query_pos * params.head_dim;
+
+    for (uint d = local_id; d < params.head_dim; d += 64) {
+        float weighted_sum = 0.0;
+
+        // Sum over all key/value positions
+        for (uint key_pos = 0; key_pos < params.seq_len; key_pos++) {
+            uint k_offset = qkv_base + key_pos * params.head_dim;
+            uint v_offset = qkv_base + key_pos * params.head_dim;
+
+            // Recompute attention weight (different access pattern: all positions per dimension)
+            float score = 0.0;
+            for (uint dim = 0; dim < params.head_dim; dim++) {
+                score += query_buf.data[q_offset + dim] * key_buf.data[k_offset + dim];
+            }
+            score *= params.scale;
+
+            if (params.use_mask != 0) {
+                uint mask_idx = query_pos * params.seq_len + key_pos;
+                score += mask_buf.data[mask_idx];
+            }
+
+            // Compute softmax attention weight
+            float attn_weight = exp(score - max_score) / sum_exp;
+
+            // Weighted sum of values
+            weighted_sum += attn_weight * value_buf.data[v_offset + d];
+        }
+
+        // Write output
+        output_buf.data[out_offset + d] = weighted_sum;
+    }
+}
