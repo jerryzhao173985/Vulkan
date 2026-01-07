@@ -1,22 +1,32 @@
 {
-  "name": "simple_add_test",
-  "description": "Test simple vector addition",
-  "model": "add_vectors",
+  "name": "Test_dry_run",
+  "description": "Test scenario for dry-run verification",
+  "version": "1.0",
   "operations": [
     {
-      "type": "compute",
-      "shader": "add_vectors.spv",
-      "workgroups": [256, 1, 1]
+      "type": "add",
+      "config": {
+        "input_shapes": [
+          [1, 256],
+          [1, 256]
+        ],
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "input_shapes": [
+        [1, 256],
+        [1, 256]
+      ],
+      "output_validation": {
+        "enabled": true,
+        "tolerance": 1e-05,
+        "reference_impl": "numpy"
+      }
     }
   ],
-  "input": {
-    "shape": [1, 1024],
-    "dtype": "float32",
-    "data": "input.npy"
-  },
-  "output": {
-    "shape": [1, 1024],
-    "dtype": "float32",
-    "path": "output.npy"
+  "performance_targets": {
+    "latency_ms": 10,
+    "throughput_ops": 1000,
+    "memory_mb": 100
   }
 }

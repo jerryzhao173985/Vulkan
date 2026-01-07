@@ -1,7 +1,8 @@
 #!/bin/bash
 # Tutorial 4: Style Transfer with ML Models
 
-SDK="/Users/jerry/Vulkan/builds/ARM-ML-SDK-Complete"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SDK="$(cd "$SCRIPT_DIR/.." && pwd)/builds/ARM-ML-SDK-Complete"
 
 echo "=== Tutorial 4: Style Transfer Demo ==="
 echo ""

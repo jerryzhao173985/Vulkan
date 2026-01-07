@@ -9,7 +9,7 @@ CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
 NC='\033[0m'
 
-SDK="/Users/jerry/Vulkan/builds/ARM-ML-SDK-Complete"
+SDK="$(cd "$(dirname "$0")" && pwd)/builds/ARM-ML-SDK-Complete"
 export DYLD_LIBRARY_PATH=/usr/local/lib:$SDK/lib
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"

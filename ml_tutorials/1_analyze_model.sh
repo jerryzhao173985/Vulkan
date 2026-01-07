@@ -1,7 +1,8 @@
 #!/bin/bash
 # Tutorial 1: Analyze TensorFlow Lite Models
 
-SDK="/Users/jerry/Vulkan/builds/ARM-ML-SDK-Complete"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SDK="$(cd "$SCRIPT_DIR/.." && pwd)/builds/ARM-ML-SDK-Complete"
 
 echo "=== Tutorial 1: Analyzing ML Models ==="
 echo ""
@@ -21,7 +22,8 @@ def analyze_tflite(path):
     with open(path, 'rb') as f:
         # Read TFLite header
         data = f.read(8)
-        if data[:4] == b'TFL3':
+        # TFLite format: first 4 bytes are size, next 4 bytes are 'TFL3' signature
+        if data[4:8] == b'TFL3':
             print("✓ Valid TensorFlow Lite model")
             print("✓ Format version: TFL3")
         

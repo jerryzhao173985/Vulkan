@@ -1,7 +1,8 @@
 #!/bin/bash
 # Tutorial 2: Test Vulkan Compute Shaders
 
-SDK="/Users/jerry/Vulkan/builds/ARM-ML-SDK-Complete"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SDK="$(cd "$SCRIPT_DIR/.." && pwd)/builds/ARM-ML-SDK-Complete"
 export DYLD_LIBRARY_PATH=/usr/local/lib:$SDK/lib
 
 echo "=== Tutorial 2: Testing Compute Shaders ==="

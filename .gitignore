@@ -46,3 +46,10 @@ ml-sdk-*/
 # Status files
 .push_statusai-ml-emulation-layer-for-vulkan/build-complete
 ai-ml-sdk-for-vulkan/build-complete
+
+# Auto Claude (internal local automation tooling - not source code)
+.auto-claude/
+.auto-claude-status
+.claude/
+.claude_settings.json
+.worktrees/
