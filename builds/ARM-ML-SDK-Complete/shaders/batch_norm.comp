@@ -29,11 +29,18 @@ layout(set = 0, binding = 5) writeonly buffer Output { float data[]; } output_bu
 // Push constants for batch norm parameters
 layout(push_constant) uniform PushConstants {
     uint channel_size;  // Number of channels (C dimension)
+    uint total_size;    // Total number of elements to process
     float epsilon;      // Small constant for numerical stability (typically 1e-5)
 } params;
 
 void main() {
     uint idx = gl_GlobalInvocationID.x;
+
+    // Bounds check to prevent out-of-bounds access
+    if (idx >= params.total_size) {
+        return;
+    }
+
     uint channel = idx % params.channel_size;
 
     // Load input value and per-channel statistics
