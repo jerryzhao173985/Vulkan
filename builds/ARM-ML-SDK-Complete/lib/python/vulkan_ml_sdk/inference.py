@@ -54,9 +54,13 @@ class ExecutionError(InferenceError):
     pass
 
 
-class TimeoutError(InferenceError):
+class InferenceTimeoutError(InferenceError):
     """Inference execution timed out."""
     pass
+
+
+# Alias for backwards compatibility (but prefer InferenceTimeoutError)
+TimeoutError = InferenceTimeoutError
 
 
 class InferenceResult:
@@ -497,7 +501,7 @@ class InferenceEngine:
         except subprocess.TimeoutExpired as e:
             end_time = time.time()
             execution_time_ms = (end_time - start_time) * 1000
-            raise TimeoutError(
+            raise InferenceTimeoutError(
                 f"Inference timed out after {execution_time_ms:.0f}ms "
                 f"(limit: {timeout_ms}ms)"
             )
@@ -821,14 +825,14 @@ class InferenceFuture:
             InferenceResult from the inference operation.
 
         Raises:
-            TimeoutError: If timeout is exceeded.
+            InferenceTimeoutError: If timeout is exceeded.
             InferenceError: If inference failed.
         """
         try:
             return self._future.result(timeout=timeout)
         except Exception as e:
             if "timed out" in str(e).lower():
-                raise TimeoutError(f"Inference timed out after {timeout}s")
+                raise InferenceTimeoutError(f"Inference timed out after {timeout}s")
             raise
 
     def done(self) -> bool:
@@ -1202,7 +1206,7 @@ class AsyncInference:
             List of InferenceResults in the same order as futures.
 
         Raises:
-            TimeoutError: If timeout is exceeded.
+            InferenceTimeoutError: If timeout is exceeded.
         """
         if futures is None:
             with self._lock:
@@ -1217,7 +1221,7 @@ class AsyncInference:
                 elapsed = time.time() - start_time
                 remaining = max(0, timeout - elapsed)
                 if remaining <= 0:
-                    raise TimeoutError("wait_all timed out")
+                    raise InferenceTimeoutError("wait_all timed out")
 
             results.append(future.result(timeout=remaining))
 

@@ -31,7 +31,8 @@ from .inference import (
     InferenceError,
     ModelLoadError,
     ExecutionError,
-    TimeoutError,
+    InferenceTimeoutError,
+    TimeoutError,  # Alias for backwards compatibility
 )
 from .pipeline import (
     Pipeline,
@@ -56,7 +57,8 @@ __all__ = [
     "InferenceError",
     "ModelLoadError",
     "ExecutionError",
-    "TimeoutError",
+    "InferenceTimeoutError",
+    "TimeoutError",  # Alias for backwards compatibility
     "Pipeline",
     "PipelineStage",
     "PipelineResult",
