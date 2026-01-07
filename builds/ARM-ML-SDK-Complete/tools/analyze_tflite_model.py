@@ -37,8 +37,13 @@ class TFLiteModelAnalyzer:
             else:
                 print("Warning: Unknown TFLite version")
         
-        # Simulate model structure for style transfer models
-        if "la_muse" in self.model_path or "style" in self.model_path.lower():
+        # Detect model architecture and analyze accordingly
+        model_lower = self.model_path.lower()
+        if "mobilenet_v3" in model_lower or "mobilenetv3" in model_lower:
+            self._analyze_mobilenet_v3_model()
+        elif "efficientnet" in model_lower:
+            self._analyze_efficientnet_model()
+        elif "la_muse" in self.model_path or "style" in model_lower:
             self._analyze_style_transfer_model()
         else:
             self._analyze_generic_model()
@@ -90,6 +95,135 @@ class TFLiteModelAnalyzer:
         for op_type, count in sorted(op_types.items()):
             print(f"  {op_type}: {count}")
     
+    def _analyze_mobilenet_v3_model(self):
+        """Analyze MobileNet V3 model structure"""
+        print("\nDetected MobileNet V3 model architecture:")
+
+        # MobileNet V3 typical operations
+        operations = [
+            # Initial convolution
+            {"type": "CONV_2D", "name": "conv_stem", "params": {"filters": 16, "kernel": [3, 3], "stride": 2}},
+            {"type": "BATCH_NORM", "name": "bn_stem"},
+            {"type": "HARD_SWISH", "name": "act_stem"},
+            # Inverted residual blocks with squeeze-excitation
+            {"type": "DEPTHWISE_CONV_2D", "name": "block1_dw", "params": {"kernel": [3, 3], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "block1_bn1"},
+            {"type": "RELU", "name": "block1_relu"},
+            {"type": "CONV_2D", "name": "block1_pw", "params": {"filters": 16, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "block1_bn2"},
+            # Block 2 with expansion
+            {"type": "CONV_2D", "name": "block2_expand", "params": {"filters": 64, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "block2_bn1"},
+            {"type": "RELU", "name": "block2_relu1"},
+            {"type": "DEPTHWISE_CONV_2D", "name": "block2_dw", "params": {"kernel": [3, 3], "stride": 2}},
+            {"type": "BATCH_NORM", "name": "block2_bn2"},
+            {"type": "RELU", "name": "block2_relu2"},
+            {"type": "SQUEEZE_EXCITE", "name": "block2_se", "params": {"reduction": 4}},
+            {"type": "CONV_2D", "name": "block2_project", "params": {"filters": 24, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "block2_bn3"},
+            # Block 3 with hard-swish
+            {"type": "CONV_2D", "name": "block3_expand", "params": {"filters": 72, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "block3_bn1"},
+            {"type": "HARD_SWISH", "name": "block3_act1"},
+            {"type": "DEPTHWISE_CONV_2D", "name": "block3_dw", "params": {"kernel": [5, 5], "stride": 2}},
+            {"type": "BATCH_NORM", "name": "block3_bn2"},
+            {"type": "HARD_SWISH", "name": "block3_act2"},
+            {"type": "SQUEEZE_EXCITE", "name": "block3_se", "params": {"reduction": 4}},
+            {"type": "CONV_2D", "name": "block3_project", "params": {"filters": 40, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "block3_bn3"},
+            # Final layers
+            {"type": "CONV_2D", "name": "conv_head", "params": {"filters": 960, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "bn_head"},
+            {"type": "HARD_SWISH", "name": "act_head"},
+            {"type": "GLOBAL_AVG_POOL", "name": "global_pool"},
+            {"type": "CONV_2D", "name": "conv_fc1", "params": {"filters": 1280, "kernel": [1, 1], "stride": 1}},
+            {"type": "HARD_SWISH", "name": "act_fc1"},
+            {"type": "FULLY_CONNECTED", "name": "classifier", "params": {"units": 1000}}
+        ]
+
+        self.model_info["operations"] = operations
+        self.model_info["architecture"] = "mobilenet_v3"
+
+        # Print summary
+        print(f"\nTotal operations: {len(operations)}")
+        op_types = {}
+        for op in operations:
+            op_type = op["type"]
+            op_types[op_type] = op_types.get(op_type, 0) + 1
+
+        print("\nOperation breakdown:")
+        for op_type, count in sorted(op_types.items()):
+            print(f"  {op_type}: {count}")
+
+    def _analyze_efficientnet_model(self):
+        """Analyze EfficientNet model structure"""
+        print("\nDetected EfficientNet model architecture:")
+
+        # EfficientNet typical operations (MBConv blocks)
+        operations = [
+            # Stem
+            {"type": "CONV_2D", "name": "stem_conv", "params": {"filters": 32, "kernel": [3, 3], "stride": 2}},
+            {"type": "BATCH_NORM", "name": "stem_bn"},
+            {"type": "SWISH", "name": "stem_act"},
+            # MBConv1 block (no expansion)
+            {"type": "DEPTHWISE_CONV_2D", "name": "mbconv1_dw", "params": {"kernel": [3, 3], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "mbconv1_bn1"},
+            {"type": "SWISH", "name": "mbconv1_act1"},
+            {"type": "SQUEEZE_EXCITE", "name": "mbconv1_se", "params": {"reduction": 4}},
+            {"type": "CONV_2D", "name": "mbconv1_project", "params": {"filters": 16, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "mbconv1_bn2"},
+            # MBConv6 block (expansion factor 6)
+            {"type": "CONV_2D", "name": "mbconv2_expand", "params": {"filters": 96, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "mbconv2_bn1"},
+            {"type": "SWISH", "name": "mbconv2_act1"},
+            {"type": "DEPTHWISE_CONV_2D", "name": "mbconv2_dw", "params": {"kernel": [3, 3], "stride": 2}},
+            {"type": "BATCH_NORM", "name": "mbconv2_bn2"},
+            {"type": "SWISH", "name": "mbconv2_act2"},
+            {"type": "SQUEEZE_EXCITE", "name": "mbconv2_se", "params": {"reduction": 4}},
+            {"type": "CONV_2D", "name": "mbconv2_project", "params": {"filters": 24, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "mbconv2_bn3"},
+            # MBConv6 with 5x5 kernel
+            {"type": "CONV_2D", "name": "mbconv3_expand", "params": {"filters": 144, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "mbconv3_bn1"},
+            {"type": "SWISH", "name": "mbconv3_act1"},
+            {"type": "DEPTHWISE_CONV_2D", "name": "mbconv3_dw", "params": {"kernel": [5, 5], "stride": 2}},
+            {"type": "BATCH_NORM", "name": "mbconv3_bn2"},
+            {"type": "SWISH", "name": "mbconv3_act2"},
+            {"type": "SQUEEZE_EXCITE", "name": "mbconv3_se", "params": {"reduction": 4}},
+            {"type": "CONV_2D", "name": "mbconv3_project", "params": {"filters": 40, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "mbconv3_bn3"},
+            # MBConv6 deeper blocks
+            {"type": "CONV_2D", "name": "mbconv4_expand", "params": {"filters": 240, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "mbconv4_bn1"},
+            {"type": "SWISH", "name": "mbconv4_act1"},
+            {"type": "DEPTHWISE_CONV_2D", "name": "mbconv4_dw", "params": {"kernel": [3, 3], "stride": 2}},
+            {"type": "BATCH_NORM", "name": "mbconv4_bn2"},
+            {"type": "SWISH", "name": "mbconv4_act2"},
+            {"type": "SQUEEZE_EXCITE", "name": "mbconv4_se", "params": {"reduction": 4}},
+            {"type": "CONV_2D", "name": "mbconv4_project", "params": {"filters": 80, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "mbconv4_bn3"},
+            # Head
+            {"type": "CONV_2D", "name": "head_conv", "params": {"filters": 1280, "kernel": [1, 1], "stride": 1}},
+            {"type": "BATCH_NORM", "name": "head_bn"},
+            {"type": "SWISH", "name": "head_act"},
+            {"type": "GLOBAL_AVG_POOL", "name": "global_pool"},
+            {"type": "FULLY_CONNECTED", "name": "classifier", "params": {"units": 1000}}
+        ]
+
+        self.model_info["operations"] = operations
+        self.model_info["architecture"] = "efficientnet"
+
+        # Print summary
+        print(f"\nTotal operations: {len(operations)}")
+        op_types = {}
+        for op in operations:
+            op_type = op["type"]
+            op_types[op_type] = op_types.get(op_type, 0) + 1
+
+        print("\nOperation breakdown:")
+        for op_type, count in sorted(op_types.items()):
+            print(f"  {op_type}: {count}")
+
     def _analyze_generic_model(self):
         """Analyze generic model structure"""
         print("\nAnalyzing generic model...")
@@ -140,10 +274,17 @@ class TFLiteModelAnalyzer:
         shader_map = {
             "CONV_2D": "conv2d.spv",
             "CONV_TRANSPOSE_2D": "conv_transpose2d.spv",
+            "DEPTHWISE_CONV_2D": "depthwise_conv2d.spv",
             "RELU": "relu.spv",
             "TANH": "tanh.spv",
+            "SWISH": "swish.spv",
+            "HARD_SWISH": "hard_swish.spv",
+            "SIGMOID": "sigmoid.spv",
             "INSTANCE_NORM": "instance_norm.spv",
+            "BATCH_NORM": "batch_norm.spv",
             "RESIDUAL_BLOCK": "residual_block.spv",
+            "SQUEEZE_EXCITE": "squeeze_excite.spv",
+            "GLOBAL_AVG_POOL": "global_avg_pool.spv",
             "FULLY_CONNECTED": "matmul.spv"
         }
         
@@ -151,11 +292,16 @@ class TFLiteModelAnalyzer:
             stage["shader"] = shader_map[op["type"]]
             
             # Set dispatch dimensions based on operation type
-            if op["type"] in ["CONV_2D", "CONV_TRANSPOSE_2D"]:
+            if op["type"] in ["CONV_2D", "CONV_TRANSPOSE_2D", "DEPTHWISE_CONV_2D"]:
                 stage["dispatch"] = {"x": 256, "y": 256, "z": 1}
             elif op["type"] == "FULLY_CONNECTED":
                 stage["dispatch"] = {"x": 1024, "y": 1, "z": 1}
+            elif op["type"] in ["SQUEEZE_EXCITE", "GLOBAL_AVG_POOL"]:
+                stage["dispatch"] = {"x": 1, "y": 1, "z": 1}
+            elif op["type"] in ["BATCH_NORM", "INSTANCE_NORM"]:
+                stage["dispatch"] = {"x": 256, "y": 256, "z": 1}
             else:
+                # Element-wise ops (RELU, SWISH, HARD_SWISH, TANH, SIGMOID)
                 stage["dispatch"] = {"x": 65536, "y": 1, "z": 1}
             
             return stage
