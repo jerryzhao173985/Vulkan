@@ -2,20 +2,29 @@
  * SPDX-FileCopyrightText: Copyright 2023-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * SPDX-License-Identifier: Apache-2.0
  *
- * Optimized matrix multiplication using Vulkan 1.1+ subgroup operations.
+ * Optimized tiled matrix multiplication with Vulkan subgroup extensions.
  * C = A * B where A is MxK, B is KxN, C is MxN
  *
- * Subgroup operations enable efficient parallel reductions without
- * explicit shared memory synchronization.
+ * Performance optimizations:
+ * 1. Shared memory tiling for coalesced global memory access
+ * 2. 4x loop unrolling in the inner product computation
+ * 3. Barrier synchronization for tile loading coordination
+ *
+ * Note: Subgroup extensions are enabled for forward compatibility.
+ * The current algorithm uses a one-thread-per-output-element pattern
+ * where each thread computes a full dot product independently.
+ * Subgroup operations (like subgroupAdd for parallel reduction)
+ * would require a different algorithm variant where multiple threads
+ * collaborate on computing each output element.
  */
 
 #version 450
-#extension GL_KHR_shader_subgroup_arithmetic : require
-#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_arithmetic : enable
+#extension GL_KHR_shader_subgroup_basic : enable
 
 // Tile size for workgroup - each thread computes one element per tile iteration
+// 16x16 = 256 threads per workgroup, optimal for most GPUs
 #define TILE_SIZE 16
-#define SUBGROUP_SIZE 32
 
 layout(local_size_x = TILE_SIZE, local_size_y = TILE_SIZE) in;
 
@@ -86,11 +95,11 @@ void main() {
     }
 
     // Write result with bounds checking
-    // Note: For standard matrix multiplication, each thread computes one unique
-    // output element, so subgroup reduction is not needed. The optimization
-    // comes from the tiled shared memory access pattern and loop unrolling.
-    // Subgroup operations (via GL_KHR_shader_subgroup_arithmetic) could be
-    // used for alternative algorithms like parallel reduction sums.
+    // Each thread computes one unique output element C[row,col], so no
+    // subgroup reduction is needed here. The performance comes from:
+    // - Shared memory tiling: reduces global memory bandwidth
+    // - Loop unrolling: better instruction-level parallelism
+    // - Coalesced access: threads in a workgroup access adjacent memory
     if (row < pc.M && col < pc.N) {
         c.data[row * pc.N + col] = acc;
     }

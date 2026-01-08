@@ -58,6 +58,11 @@ class ExportError(TelemetryError):
     pass
 
 
+class ValidationError(TelemetryError):
+    """Error during input validation."""
+    pass
+
+
 class MetricType(Enum):
     """Types of metrics that can be tracked."""
     LATENCY = "latency"
@@ -349,6 +354,7 @@ class Telemetry:
         self,
         name: str = "default",
         max_points_per_metric: int = 10000,
+        max_memory_snapshots: int = 10000,
         auto_memory_tracking: bool = False
     ):
         """
@@ -356,14 +362,29 @@ class Telemetry:
 
         Args:
             name: Name for this telemetry instance.
-            max_points_per_metric: Maximum data points per metric series.
+            max_points_per_metric: Maximum data points per metric series (must be > 0).
+            max_memory_snapshots: Maximum memory snapshots to retain (must be > 0).
             auto_memory_tracking: If True, periodically track memory usage.
+
+        Raises:
+            ValidationError: If max_points_per_metric or max_memory_snapshots <= 0.
         """
+        if not isinstance(max_points_per_metric, int) or max_points_per_metric <= 0:
+            raise ValidationError(
+                f"max_points_per_metric must be a positive integer, got {max_points_per_metric}"
+            )
+        if not isinstance(max_memory_snapshots, int) or max_memory_snapshots <= 0:
+            raise ValidationError(
+                f"max_memory_snapshots must be a positive integer, got {max_memory_snapshots}"
+            )
+
         self._name = name
         self._max_points = max_points_per_metric
+        self._max_memory_snapshots = max_memory_snapshots
         self._series: Dict[str, MetricSeries] = {}
         self._memory_snapshots: List[MemorySnapshot] = []
         self._lock = threading.RLock()
+        self._callbacks_lock = threading.Lock()
         self._created_at = time.time()
         self._callbacks: List[Callable[[MetricPoint], None]] = []
 
@@ -419,13 +440,21 @@ class Telemetry:
 
         Args:
             name: Name/identifier for this latency metric.
-            value_ms: Latency value in milliseconds.
+            value_ms: Latency value in milliseconds (must be >= 0).
             tags: Optional tags for categorization.
 
         Returns:
             The recorded MetricPoint.
+
+        Raises:
+            ValidationError: If name is empty or value_ms is negative.
         """
-        series = self._get_or_create_series(name, MetricType.LATENCY, "ms")
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("name must be a non-empty string")
+        if not isinstance(value_ms, (int, float)) or value_ms < 0:
+            raise ValidationError(f"value_ms must be a non-negative number, got {value_ms}")
+
+        series = self._get_or_create_series(name.strip(), MetricType.LATENCY, "ms")
         point = series.add(value_ms, tags)
         self._notify_callbacks(point)
         return point
@@ -441,13 +470,23 @@ class Telemetry:
 
         Args:
             name: Name/identifier for this throughput metric.
-            ops_per_second: Operations per second.
+            ops_per_second: Operations per second (must be >= 0).
             tags: Optional tags for categorization.
 
         Returns:
             The recorded MetricPoint.
+
+        Raises:
+            ValidationError: If name is empty or ops_per_second is negative.
         """
-        series = self._get_or_create_series(name, MetricType.THROUGHPUT, "ops/s")
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("name must be a non-empty string")
+        if not isinstance(ops_per_second, (int, float)) or ops_per_second < 0:
+            raise ValidationError(
+                f"ops_per_second must be a non-negative number, got {ops_per_second}"
+            )
+
+        series = self._get_or_create_series(name.strip(), MetricType.THROUGHPUT, "ops/s")
         point = series.add(ops_per_second, tags)
         self._notify_callbacks(point)
         return point
@@ -463,13 +502,23 @@ class Telemetry:
 
         Args:
             name: Name/identifier for this memory metric.
-            bytes_used: Memory usage in bytes.
+            bytes_used: Memory usage in bytes (must be >= 0).
             tags: Optional tags for categorization.
 
         Returns:
             The recorded MetricPoint.
+
+        Raises:
+            ValidationError: If name is empty or bytes_used is negative.
         """
-        series = self._get_or_create_series(name, MetricType.MEMORY, "bytes")
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("name must be a non-empty string")
+        if not isinstance(bytes_used, (int, float)) or bytes_used < 0:
+            raise ValidationError(
+                f"bytes_used must be a non-negative number, got {bytes_used}"
+            )
+
+        series = self._get_or_create_series(name.strip(), MetricType.MEMORY, "bytes")
         point = series.add(float(bytes_used), tags)
         self._notify_callbacks(point)
         return point
@@ -485,13 +534,21 @@ class Telemetry:
 
         Args:
             name: Name/identifier for this counter.
-            value: Value to add to the counter.
+            value: Value to add to the counter (must be >= 0).
             tags: Optional tags for categorization.
 
         Returns:
             The recorded MetricPoint.
+
+        Raises:
+            ValidationError: If name is empty or value is negative.
         """
-        series = self._get_or_create_series(name, MetricType.COUNTER, "count")
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("name must be a non-empty string")
+        if not isinstance(value, (int, float)) or value < 0:
+            raise ValidationError(f"value must be a non-negative number, got {value}")
+
+        series = self._get_or_create_series(name.strip(), MetricType.COUNTER, "count")
         point = series.add(value, tags)
         self._notify_callbacks(point)
         return point
@@ -508,14 +565,22 @@ class Telemetry:
 
         Args:
             name: Name/identifier for this gauge.
-            value: Current gauge value.
+            value: Current gauge value (can be any number).
             unit: Unit of measurement.
             tags: Optional tags for categorization.
 
         Returns:
             The recorded MetricPoint.
+
+        Raises:
+            ValidationError: If name is empty or value is not a number.
         """
-        series = self._get_or_create_series(name, MetricType.GAUGE, unit)
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("name must be a non-empty string")
+        if not isinstance(value, (int, float)):
+            raise ValidationError(f"value must be a number, got {type(value).__name__}")
+
+        series = self._get_or_create_series(name.strip(), MetricType.GAUGE, unit)
         point = series.add(value, tags)
         self._notify_callbacks(point)
         return point
@@ -536,16 +601,22 @@ class Telemetry:
         Yields:
             None
 
+        Raises:
+            ValidationError: If name is empty.
+
         Example:
             with telemetry.measure("inference"):
                 result = model.infer(input_data)
         """
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("name must be a non-empty string")
+
         start_time = time.perf_counter()
         try:
             yield
         finally:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            self.record_latency(name, elapsed_ms, tags)
+            self.record_latency(name.strip(), elapsed_ms, tags)
 
     def get_series(self, name: str) -> Optional[MetricSeries]:
         """
@@ -597,8 +668,15 @@ class Telemetry:
 
         Args:
             callback: Function to call with each MetricPoint.
+
+        Raises:
+            ValidationError: If callback is not callable.
         """
-        self._callbacks.append(callback)
+        if not callable(callback):
+            raise ValidationError("callback must be callable")
+
+        with self._callbacks_lock:
+            self._callbacks.append(callback)
 
     def remove_callback(
         self,
@@ -613,15 +691,19 @@ class Telemetry:
         Returns:
             True if callback was removed, False if not found.
         """
-        try:
-            self._callbacks.remove(callback)
-            return True
-        except ValueError:
-            return False
+        with self._callbacks_lock:
+            try:
+                self._callbacks.remove(callback)
+                return True
+            except ValueError:
+                return False
 
     def _notify_callbacks(self, point: MetricPoint) -> None:
-        """Notify all registered callbacks."""
-        for callback in self._callbacks:
+        """Notify all registered callbacks (thread-safe)."""
+        with self._callbacks_lock:
+            callbacks = list(self._callbacks)
+
+        for callback in callbacks:
             try:
                 callback(point)
             except Exception:
@@ -639,7 +721,15 @@ class Telemetry:
 
         Returns:
             MemorySnapshot with current memory state.
+
+        Raises:
+            ValidationError: If source is empty.
         """
+        if not isinstance(source, str) or not source.strip():
+            raise ValidationError("source must be a non-empty string")
+
+        source = source.strip()
+
         try:
             import resource
             usage = resource.getrusage(resource.RUSAGE_SELF)
@@ -657,7 +747,13 @@ class Telemetry:
         except (OSError, ValueError):
             available = 16 * 1024 * 1024 * 1024
 
-        peak = max(allocated, max([s.allocated_bytes for s in self._memory_snapshots], default=0))
+        # Thread-safe access to _memory_snapshots for peak calculation
+        with self._lock:
+            peak = max(
+                allocated,
+                max([s.allocated_bytes for s in self._memory_snapshots], default=0)
+            )
+
         utilization = (allocated / available * 100) if available > 0 else 0.0
 
         snapshot = MemorySnapshot(
@@ -671,6 +767,9 @@ class Telemetry:
 
         with self._lock:
             self._memory_snapshots.append(snapshot)
+            # Trim if exceeding max snapshots
+            if len(self._memory_snapshots) > self._max_memory_snapshots:
+                self._memory_snapshots = self._memory_snapshots[-self._max_memory_snapshots:]
 
         return snapshot
 
@@ -713,11 +812,18 @@ class Telemetry:
             format: Export format ("json", "csv", or "prometheus").
 
         Raises:
+            ValidationError: If path is empty or format is not supported.
             ExportError: If export fails.
-            ValueError: If format is not supported.
         """
+        # Validate path
+        if path is None:
+            raise ValidationError("path cannot be None")
+        if isinstance(path, str) and not path.strip():
+            raise ValidationError("path cannot be empty")
+
+        # Validate format
         if format not in self.SUPPORTED_FORMATS:
-            raise ValueError(
+            raise ValidationError(
                 f"Unsupported format: {format}. "
                 f"Supported formats: {self.SUPPORTED_FORMATS}"
             )
@@ -732,20 +838,22 @@ class Telemetry:
                 self._export_csv(path)
             elif format == "prometheus":
                 self._export_prometheus(path)
+        except ValidationError:
+            raise  # Re-raise validation errors as-is
         except Exception as e:
             raise ExportError(f"Failed to export metrics: {e}")
 
     def _export_json(self, path: Path) -> None:
-        """Export metrics to JSON format."""
-        data = {
-            "name": self._name,
-            "created_at": self._created_at,
-            "exported_at": time.time(),
-            "metrics": {},
-            "memory_snapshots": [s.to_dict() for s in self._memory_snapshots],
-        }
-
+        """Export metrics to JSON format (thread-safe)."""
         with self._lock:
+            data = {
+                "name": self._name,
+                "created_at": self._created_at,
+                "exported_at": time.time(),
+                "metrics": {},
+                "memory_snapshots": [s.to_dict() for s in self._memory_snapshots],
+            }
+
             for name, series in self._series.items():
                 data["metrics"][name] = {
                     "type": series.metric_type.value,
@@ -857,7 +965,8 @@ class Telemetry:
         background threads and release resources.
         """
         self._stop_memory_tracking_thread()
-        self._callbacks.clear()
+        with self._callbacks_lock:
+            self._callbacks.clear()
 
     def __enter__(self) -> "Telemetry":
         """Context manager entry."""
@@ -901,7 +1010,15 @@ class TelemetryAggregator:
 
         Args:
             telemetry: Telemetry instance to add.
+
+        Raises:
+            ValidationError: If telemetry is not a Telemetry instance.
         """
+        if not isinstance(telemetry, Telemetry):
+            raise ValidationError(
+                f"telemetry must be a Telemetry instance, got {type(telemetry).__name__}"
+            )
+
         with self._lock:
             if telemetry not in self._sources:
                 self._sources.append(telemetry)
@@ -932,14 +1049,24 @@ class TelemetryAggregator:
 
         Returns:
             Combined statistics dictionary.
+
+        Raises:
+            ValidationError: If metric_name is empty.
         """
+        if not isinstance(metric_name, str) or not metric_name.strip():
+            raise ValidationError("metric_name must be a non-empty string")
+
+        metric_name = metric_name.strip()
         all_values = []
 
         with self._lock:
-            for source in self._sources:
-                series = source.get_series(metric_name)
-                if series:
-                    all_values.extend(series.get_values())
+            sources_copy = list(self._sources)
+
+        # Collect values outside the lock to avoid holding it too long
+        for source in sources_copy:
+            series = source.get_series(metric_name)
+            if series:
+                all_values.extend(series.get_values())
 
         if not all_values:
             return {}
@@ -957,7 +1084,7 @@ class TelemetryAggregator:
 
         return {
             "name": metric_name,
-            "source_count": len(self._sources),
+            "source_count": len(sources_copy),
             "count": count,
             "min": min(all_values),
             "max": max(all_values),
@@ -978,10 +1105,12 @@ class TelemetryAggregator:
         Returns:
             List of unique metric names.
         """
-        names = set()
         with self._lock:
-            for source in self._sources:
-                names.update(source.metric_names)
+            sources_copy = list(self._sources)
+
+        names = set()
+        for source in sources_copy:
+            names.update(source.metric_names)
         return sorted(names)
 
     def export_all(
@@ -998,23 +1127,44 @@ class TelemetryAggregator:
 
         Returns:
             List of exported file paths.
+
+        Raises:
+            ValidationError: If directory is empty or format is not supported.
         """
+        # Validate directory
+        if directory is None:
+            raise ValidationError("directory cannot be None")
+        if isinstance(directory, str) and not directory.strip():
+            raise ValidationError("directory cannot be empty")
+
+        # Validate format
+        if format not in Telemetry.SUPPORTED_FORMATS:
+            raise ValidationError(
+                f"Unsupported format: {format}. "
+                f"Supported formats: {Telemetry.SUPPORTED_FORMATS}"
+            )
+
         directory = Path(directory)
         directory.mkdir(parents=True, exist_ok=True)
         exported = []
 
         with self._lock:
-            for i, source in enumerate(self._sources):
-                filename = f"{source.name or f'source_{i}'}.{format}"
-                path = directory / filename
-                source.export(path, format=format)
-                exported.append(path)
+            sources_copy = list(self._sources)
+
+        # Export outside the lock to avoid holding it during I/O
+        for i, source in enumerate(sources_copy):
+            filename = f"{source.name or f'source_{i}'}.{format}"
+            path = directory / filename
+            source.export(path, format=format)
+            exported.append(path)
 
         return exported
 
     def __len__(self) -> int:
-        """Return number of sources."""
-        return len(self._sources)
+        """Return number of sources (thread-safe)."""
+        with self._lock:
+            return len(self._sources)
 
     def __repr__(self) -> str:
-        return f"TelemetryAggregator(sources={len(self._sources)})"
+        with self._lock:
+            return f"TelemetryAggregator(sources={len(self._sources)})"

@@ -1,21 +1,47 @@
 #!/bin/bash
 # Tutorial 7: New ML Model Architectures
 
+set -e  # Exit on error
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK="$(cd "$SCRIPT_DIR/.." && pwd)/builds/ARM-ML-SDK-Complete"
+export DYLD_LIBRARY_PATH=/usr/local/lib:$SDK/lib
 
 echo "=== Tutorial 7: New ML Model Architectures ==="
 echo ""
+
+# Clear PYTHONPATH to avoid Auto-Claude numpy conflicts
+unset PYTHONPATH
+
+# Validate SDK exists
+if [ ! -d "$SDK" ]; then
+    echo "ERROR: SDK not found at $SDK"
+    echo "Please run ./scripts/build/build_all.sh first"
+    exit 1
+fi
+
 echo "This tutorial covers the different ML architectures"
 echo "supported by the ARM ML SDK and how to add new models."
 echo ""
 
 echo "Available Models in SDK:"
 echo "========================"
-ls -lh "$SDK/models/"*.tflite 2>/dev/null | awk '{print $9, $5}' | while read path size; do
-    name=$(basename "$path" .tflite)
-    echo "  • $name ($size)"
-done
+if [ -d "$SDK/models" ]; then
+    model_count=0
+    for model_file in "$SDK/models/"*.tflite; do
+        if [ -f "$model_file" ]; then
+            name=$(basename "$model_file" .tflite)
+            size=$(ls -lh "$model_file" | awk '{print $5}')
+            echo "  • $name ($size)"
+            model_count=$((model_count + 1))
+        fi
+    done
+    if [ "$model_count" -eq 0 ]; then
+        echo "  (No TFLite models found)"
+    fi
+else
+    echo "  (Models directory not found)"
+fi
 echo ""
 
 python3 << 'EOF'
@@ -231,6 +257,35 @@ print("• Edge deployment: Minimize model size")
 print("")
 EOF
 
+# Verify key SDK components
+echo ""
+echo "Verifying SDK components:"
+echo "========================="
+components_ok=0
+
+if [ -f "$SDK/bin/scenario-runner" ]; then
+    echo "  ✓ scenario-runner executable"
+    components_ok=$((components_ok + 1))
+else
+    echo "  ✗ scenario-runner (not found)"
+fi
+
+if [ -d "$SDK/tools" ]; then
+    tool_count=$(ls -1 "$SDK/tools/"*.py 2>/dev/null | wc -l | tr -d ' ')
+    echo "  ✓ Python tools ($tool_count tools available)"
+    components_ok=$((components_ok + 1))
+else
+    echo "  ✗ Python tools directory (not found)"
+fi
+
+if [ -d "$SDK/shaders" ]; then
+    shader_count=$(ls -1 "$SDK/shaders/"*.spv 2>/dev/null | wc -l | tr -d ' ')
+    echo "  ✓ SPIR-V shaders ($shader_count shaders)"
+    components_ok=$((components_ok + 1))
+else
+    echo "  ✗ Shaders directory (not found)"
+fi
+
 echo ""
 echo "Quick Commands:"
 echo "==============="
@@ -253,5 +308,7 @@ echo "  4. Style transfer      - ./ml_tutorials/4_style_transfer.sh"
 echo "  5. Optimizations       - ./ml_tutorials/5_optimization.sh"
 echo "  6. Advanced Vulkan     - ./ml_tutorials/6_advanced_vulkan.sh"
 echo "  7. New models          - ./ml_tutorials/7_new_models.sh (this tutorial)"
+echo ""
+echo "For unified SDK operations, use: ./unified_launcher.sh"
 echo ""
 echo "Ready to add your own models!"

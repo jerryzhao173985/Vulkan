@@ -1,6 +1,7 @@
 #!/bin/bash
 # End-to-End Pipeline Test for ARM ML SDK
 # Tests the complete pipeline: model -> convert -> inference -> output
+# shellcheck disable=SC2034  # Color variables are used via indirection
 #
 # This script verifies the full ML pipeline workflow:
 # 1. Model Selection & Validation
@@ -9,7 +10,7 @@
 # 4. Scenario Execution (dry-run mode)
 # 5. Output Verification
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -17,6 +18,7 @@ SDK="$SDK_ROOT/builds/ARM-ML-SDK-Complete"
 OUTPUT_DIR="$SDK_ROOT/results/e2e-pipeline-test"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
+# Color codes for output
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[0;33m'
@@ -108,7 +110,7 @@ else
 fi
 
 # Set environment
-export DYLD_LIBRARY_PATH="/usr/local/lib:$SDK/lib:$DYLD_LIBRARY_PATH"
+export DYLD_LIBRARY_PATH="/usr/local/lib:$SDK/lib:${DYLD_LIBRARY_PATH:-}"
 check_pass "Environment variables configured"
 echo ""
 
@@ -131,8 +133,8 @@ elif [ -f "$FALLBACK_MODEL" ]; then
     check_warn "Using fallback model: la_muse"
 else
     # Find any available model
-    MODEL_PATH=$(ls -1 "$SDK/models"/*.tflite 2>/dev/null | head -1)
-    if [ -n "$MODEL_PATH" ]; then
+    MODEL_PATH=$(find "$SDK/models" -maxdepth 1 -name "*.tflite" -type f 2>/dev/null | head -1)
+    if [ -n "$MODEL_PATH" ] && [ -f "$MODEL_PATH" ]; then
         MODEL_NAME=$(basename "$MODEL_PATH" .tflite)
         check_warn "Using available model: $MODEL_NAME"
     else
@@ -150,12 +152,16 @@ else
     check_fail "Model file is empty or unreadable"
 fi
 
-# Validate TFLite header
-HEADER=$(xxd -l 8 "$MODEL_PATH" 2>/dev/null | head -1 || echo "")
-if echo "$HEADER" | grep -q "TFL3"; then
-    check_pass "Model has valid TFLite v3 header"
+# Validate TFLite header (if xxd is available)
+if command -v xxd >/dev/null 2>&1; then
+    HEADER=$(xxd -l 8 "$MODEL_PATH" 2>/dev/null | head -1 || echo "")
+    if echo "$HEADER" | grep -q "TFL3"; then
+        check_pass "Model has valid TFLite v3 header"
+    else
+        check_warn "Model header could not be verified"
+    fi
 else
-    check_warn "Model header could not be verified"
+    check_warn "xxd not available for header validation"
 fi
 echo ""
 

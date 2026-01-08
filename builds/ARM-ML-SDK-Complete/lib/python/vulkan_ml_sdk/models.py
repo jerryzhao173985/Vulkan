@@ -36,6 +36,11 @@ class ModelValidationError(ModelError):
     pass
 
 
+class ValidationError(ModelError):
+    """Raised when input validation fails."""
+    pass
+
+
 class ModelInfo:
     """
     Information about a loaded model.
@@ -48,16 +53,46 @@ class ModelInfo:
         metadata: Additional model metadata.
     """
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Union[str, Path]):
         """
         Initialize ModelInfo from a model file path.
 
         Args:
             path: Path to the model file.
+
+        Raises:
+            ValidationError: If path is None or empty.
+            ModelNotFoundError: If the model file does not exist.
+            ModelValidationError: If path points to a directory, not a file.
         """
+        # Validate input
+        if path is None:
+            raise ValidationError("path cannot be None")
+
+        # Convert to Path if string
+        if isinstance(path, str):
+            if not path.strip():
+                raise ValidationError("path cannot be an empty string")
+            path = Path(path)
+
+        if not isinstance(path, Path):
+            raise ValidationError(f"path must be a string or Path, got {type(path).__name__}")
+
+        # Validate file exists
+        if not path.exists():
+            raise ModelNotFoundError(f"Model file not found: {path}")
+
+        if not path.is_file():
+            raise ModelValidationError(f"Path is not a file: {path}")
+
         self.path = path
         self.name = path.stem
-        self.size = path.stat().st_size
+
+        try:
+            self.size = path.stat().st_size
+        except OSError as e:
+            raise ModelValidationError(f"Cannot access model file: {e}")
+
         self.format = self._detect_format()
         self.metadata = self._extract_metadata()
 
@@ -88,9 +123,10 @@ class ModelInfo:
 
     def _extract_tflite_metadata(self) -> Dict[str, Any]:
         """Extract TFLite-specific metadata."""
-        tflite_meta = {
+        tflite_meta: Dict[str, Any] = {
             "version": None,
             "valid": False,
+            "error": None,
         }
 
         try:
@@ -105,8 +141,14 @@ class ModelInfo:
                     elif identifier.startswith(b'TFL'):
                         tflite_meta["version"] = identifier[3:].decode('ascii', errors='ignore')
                         tflite_meta["valid"] = True
-        except Exception:
-            pass
+                    else:
+                        tflite_meta["error"] = "Invalid TFLite identifier"
+                else:
+                    tflite_meta["error"] = "File too small to be valid TFLite"
+        except OSError as e:
+            tflite_meta["error"] = f"Cannot read file: {e}"
+        except (ValueError, UnicodeDecodeError) as e:
+            tflite_meta["error"] = f"Invalid file format: {e}"
 
         return tflite_meta
 
@@ -162,27 +204,53 @@ class ModelRegistry:
 
         Args:
             sdk_root: Path to the SDK root directory.
+
+        Raises:
+            ValidationError: If sdk_root is None or empty.
         """
-        self._sdk_root = Path(sdk_root).resolve()
+        # Validate input
+        if sdk_root is None:
+            raise ValidationError("sdk_root cannot be None")
+
+        if isinstance(sdk_root, str):
+            if not sdk_root.strip():
+                raise ValidationError("sdk_root cannot be an empty string")
+            sdk_root = Path(sdk_root)
+
+        if not isinstance(sdk_root, Path):
+            raise ValidationError(f"sdk_root must be a string or Path, got {type(sdk_root).__name__}")
+
+        self._sdk_root = sdk_root.resolve()
         self._models_dir = self._sdk_root / "models"
         self._cache: Dict[str, ModelInfo] = {}
+        self._scan_errors: Dict[str, str] = {}  # Track models that failed to load
         self._scan_models()
 
     def _scan_models(self) -> None:
         """Scan the models directory and populate the cache."""
         self._cache.clear()
+        self._scan_errors.clear()
 
         if not self._models_dir.exists():
             return
 
-        for model_file in self._models_dir.iterdir():
+        try:
+            model_files = list(self._models_dir.iterdir())
+        except OSError:
+            # Cannot read models directory
+            return
+
+        for model_file in model_files:
             if model_file.is_file() and model_file.suffix.lower() in self.SUPPORTED_FORMATS:
                 try:
                     model_info = ModelInfo(model_file)
                     self._cache[model_info.name] = model_info
-                except Exception:
-                    # Skip models that fail to load
-                    pass
+                except (ModelNotFoundError, ModelValidationError, ValidationError) as e:
+                    # Track models that failed to load for debugging
+                    self._scan_errors[model_file.name] = str(e)
+                except OSError as e:
+                    # File system errors
+                    self._scan_errors[model_file.name] = f"OS error: {e}"
 
     @property
     def sdk_root(self) -> Path:
@@ -229,15 +297,29 @@ class ModelRegistry:
             ModelInfo object for the model.
 
         Raises:
+            ValidationError: If name is not a non-empty string.
             ModelNotFoundError: If model is not found.
         """
+        # Validate input
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("name must be a non-empty string")
+
         # Strip extension if provided
-        clean_name = Path(name).stem
+        clean_name = Path(name.strip()).stem
 
         if clean_name in self._cache:
             return self._cache[clean_name]
 
         raise ModelNotFoundError(f"Model not found: {name}")
+
+    def get_scan_errors(self) -> Dict[str, str]:
+        """
+        Get errors from the last model scan.
+
+        Returns:
+            Dict mapping model filenames to error messages.
+        """
+        return self._scan_errors.copy()
 
     def get_model_path(self, name: str) -> Path:
         """
@@ -263,8 +345,14 @@ class ModelRegistry:
 
         Returns:
             True if model exists, False otherwise.
+
+        Raises:
+            ValidationError: If name is not a non-empty string.
         """
-        clean_name = Path(name).stem
+        if not isinstance(name, str) or not name.strip():
+            raise ValidationError("name must be a non-empty string")
+
+        clean_name = Path(name.strip()).stem
         return clean_name in self._cache
 
     def validate_model(self, name: str) -> Dict[str, Any]:
@@ -368,8 +456,16 @@ def load_model(sdk_root: Union[str, Path], model_name: str) -> ModelInfo:
 
     Returns:
         ModelInfo for the requested model.
+
+    Raises:
+        ValidationError: If sdk_root or model_name is invalid.
+        ModelNotFoundError: If model is not found.
     """
-    registry = ModelRegistry(sdk_root)
+    # Validate model_name
+    if not isinstance(model_name, str) or not model_name.strip():
+        raise ValidationError("model_name must be a non-empty string")
+
+    registry = ModelRegistry(sdk_root)  # sdk_root validation handled in ModelRegistry
     return registry.get_model(model_name)
 
 
@@ -384,22 +480,44 @@ def validate_tflite(model_path: Union[str, Path]) -> Dict[str, Any]:
         Dict with validation results.
 
     Raises:
+        ValidationError: If model_path is None or empty.
         ModelValidationError: If file does not exist.
     """
-    path = Path(model_path)
+    # Validate input
+    if model_path is None:
+        raise ValidationError("model_path cannot be None")
+
+    if isinstance(model_path, str):
+        if not model_path.strip():
+            raise ValidationError("model_path cannot be an empty string")
+        path = Path(model_path.strip())
+    elif isinstance(model_path, Path):
+        path = model_path
+    else:
+        raise ValidationError(f"model_path must be a string or Path, got {type(model_path).__name__}")
 
     if not path.exists():
         raise ModelValidationError(f"Model file not found: {model_path}")
 
-    results = {
+    results: Dict[str, Any] = {
         "path": str(path),
         "exists": True,
-        "size": path.stat().st_size,
-        "size_mb": round(path.stat().st_size / 1024 / 1024, 2),
+        "size": 0,
+        "size_mb": 0.0,
         "valid_format": False,
         "version": None,
         "errors": [],
     }
+
+    # Get file size
+    try:
+        file_size = path.stat().st_size
+        results["size"] = file_size
+        results["size_mb"] = round(file_size / 1024 / 1024, 2)
+    except OSError as e:
+        results["errors"].append(f"Cannot access file: {e}")
+        results["valid"] = False
+        return results
 
     # Check file extension
     if path.suffix.lower() != ".tflite":
@@ -421,8 +539,10 @@ def validate_tflite(model_path: Union[str, Path]) -> Dict[str, Any]:
                     results["errors"].append("Invalid TFLite identifier in file header")
             else:
                 results["errors"].append("File too small to be valid TFLite model")
-    except IOError as e:
+    except OSError as e:
         results["errors"].append(f"Failed to read file: {e}")
+    except (ValueError, UnicodeDecodeError) as e:
+        results["errors"].append(f"Invalid file format: {e}")
 
     results["valid"] = results["valid_format"] and len(results["errors"]) == 0
 
@@ -467,8 +587,40 @@ class CacheEntry:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CacheEntry":
-        """Create cache entry from dictionary."""
-        return cls(**data)
+        """
+        Create cache entry from dictionary.
+
+        Args:
+            data: Dictionary containing cache entry fields.
+
+        Returns:
+            CacheEntry instance.
+
+        Raises:
+            ValidationError: If data is None or missing required fields.
+        """
+        if data is None:
+            raise ValidationError("data cannot be None")
+
+        # Required fields for CacheEntry
+        required_fields = {
+            'model_name', 'original_path', 'cached_path', 'file_hash',
+            'size', 'sdk_version', 'created_at', 'last_accessed'
+        }
+
+        missing_fields = required_fields - set(data.keys())
+        if missing_fields:
+            raise ValidationError(f"Missing required fields: {missing_fields}")
+
+        # Filter to only known fields to avoid TypeError from dataclass constructor
+        known_fields = {
+            'model_name', 'original_path', 'cached_path', 'file_hash',
+            'size', 'sdk_version', 'created_at', 'last_accessed',
+            'access_count', 'metadata'
+        }
+        filtered_data = {k: v for k, v in data.items() if k in known_fields}
+
+        return cls(**filtered_data)
 
 
 class CacheCorruptionError(ModelError):
@@ -525,8 +677,27 @@ class ModelCache:
             cache_dir: Directory for cached models. Defaults to ~/.vulkan_ml_sdk/cache/
             max_size_mb: Maximum cache size in megabytes. Defaults to 500MB.
             auto_evict: If True, automatically evict old entries when cache is full.
+
+        Raises:
+            ValidationError: If max_size_mb is not a positive integer.
         """
-        self._cache_dir = Path(cache_dir) if cache_dir else self.DEFAULT_CACHE_DIR
+        # Validate max_size_mb
+        if not isinstance(max_size_mb, int) or max_size_mb <= 0:
+            raise ValidationError(f"max_size_mb must be a positive integer, got {max_size_mb}")
+
+        # Validate and set cache_dir
+        if cache_dir is not None:
+            if isinstance(cache_dir, str):
+                if not cache_dir.strip():
+                    raise ValidationError("cache_dir cannot be an empty string")
+                self._cache_dir = Path(cache_dir.strip())
+            elif isinstance(cache_dir, Path):
+                self._cache_dir = cache_dir
+            else:
+                raise ValidationError(f"cache_dir must be a string or Path, got {type(cache_dir).__name__}")
+        else:
+            self._cache_dir = self.DEFAULT_CACHE_DIR
+
         self._max_size_bytes = max_size_mb * 1024 * 1024
         self._auto_evict = auto_evict
         self._lock = threading.RLock()
@@ -534,7 +705,10 @@ class ModelCache:
         self._warm_models: Dict[str, bytes] = {}  # In-memory warm cache
 
         # Ensure cache directory exists
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self._cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise ModelError(f"Cannot create cache directory: {e}")
 
         # Load existing manifest
         self._load_manifest()
@@ -575,27 +749,39 @@ class ModelCache:
             with open(manifest_path, 'r') as f:
                 data = json.load(f)
 
+            # Validate manifest is a dict
+            if not isinstance(data, dict):
+                self._clear_all()
+                return
+
             # Validate manifest version
             manifest_version = data.get("sdk_version", "")
-            if not manifest_version.startswith(_SDK_CACHE_VERSION.split('.')[0]):
+            if not isinstance(manifest_version, str) or \
+               not manifest_version.startswith(_SDK_CACHE_VERSION.split('.')[0]):
                 # Major version mismatch - invalidate cache
                 self._clear_all()
                 return
 
             # Load entries
             entries = data.get("entries", {})
+            if not isinstance(entries, dict):
+                self._clear_all()
+                return
+
             for name, entry_data in entries.items():
                 try:
+                    if not isinstance(entry_data, dict):
+                        continue
                     entry = CacheEntry.from_dict(entry_data)
                     # Verify cached file exists
                     if Path(entry.cached_path).exists():
                         self._entries[name] = entry
-                except (KeyError, TypeError):
+                except (KeyError, TypeError, ValidationError):
                     # Skip corrupted entries
                     pass
 
-        except (json.JSONDecodeError, IOError):
-            # Corrupted manifest - start fresh
+        except (json.JSONDecodeError, OSError, ValueError):
+            # Corrupted or unreadable manifest - start fresh
             self._clear_all()
 
     def _save_manifest(self) -> None:
@@ -614,8 +800,8 @@ class ModelCache:
         try:
             with open(manifest_path, 'w') as f:
                 json.dump(manifest, f, indent=2)
-        except IOError:
-            pass  # Non-critical failure
+        except OSError:
+            pass  # Non-critical failure - cache will be rebuilt on next load
 
     def _compute_hash(self, file_path: Path) -> str:
         """Compute SHA-256 hash of a file."""
@@ -678,8 +864,8 @@ class ModelCache:
                 # Remove empty parent directory
                 if cached_path.parent.exists() and not any(cached_path.parent.iterdir()):
                     cached_path.parent.rmdir()
-            except IOError:
-                pass
+            except OSError:
+                pass  # Best effort - file may be in use or permissions issue
 
         # Remove from memory cache
         if model_name in self._warm_models:
@@ -697,8 +883,8 @@ class ModelCache:
                 if cached_path.exists():
                     try:
                         cached_path.unlink()
-                    except IOError:
-                        pass
+                    except OSError:
+                        pass  # Best effort - file may be in use or permissions issue
 
             self._entries.clear()
             self._warm_models.clear()
@@ -722,10 +908,26 @@ class ModelCache:
             CacheEntry for the cached model.
 
         Raises:
+            ValidationError: If model_name or model_path is invalid.
             ModelNotFoundError: If source file doesn't exist.
             ModelError: If caching fails.
         """
-        model_path = Path(model_path)
+        # Validate model_name
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+
+        model_name = model_name.strip()
+
+        # Validate model_path
+        if model_path is None:
+            raise ValidationError("model_path cannot be None")
+
+        if isinstance(model_path, str):
+            if not model_path.strip():
+                raise ValidationError("model_path cannot be an empty string")
+            model_path = Path(model_path.strip())
+        elif not isinstance(model_path, Path):
+            raise ValidationError(f"model_path must be a string or Path, got {type(model_path).__name__}")
 
         if not model_path.exists():
             raise ModelNotFoundError(f"Model file not found: {model_path}")
@@ -761,12 +963,17 @@ class ModelCache:
 
             # Copy file to cache
             cached_path = self._cached_file_path(model_name, file_hash)
-            cached_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                cached_path.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                raise ModelError(f"Failed to create cache directory: {e}")
 
             try:
                 shutil.copy2(model_path, cached_path)
-            except IOError as e:
+            except OSError as e:
                 raise ModelError(f"Failed to cache model: {e}")
+            except shutil.Error as e:
+                raise ModelError(f"Failed to copy model to cache: {e}")
 
             # Create entry
             now = time.time()
@@ -800,8 +1007,15 @@ class ModelCache:
             Path to cached model file, or None if not cached.
 
         Raises:
+            ValidationError: If model_name is not a non-empty string.
             CacheCorruptionError: If integrity check fails (when verify_integrity=True).
         """
+        # Validate model_name
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+
+        model_name = model_name.strip()
+
         with self._lock:
             if model_name not in self._entries:
                 return None
@@ -897,22 +1111,42 @@ class ModelCache:
 
         Returns:
             Dict mapping model names to success status.
+
+        Raises:
+            ValidationError: If model_names is not a list.
         """
-        results = {}
+        # Validate input
+        if model_names is None:
+            raise ValidationError("model_names cannot be None")
+        if not isinstance(model_names, list):
+            raise ValidationError(f"model_names must be a list, got {type(model_names).__name__}")
+
+        results: Dict[str, bool] = {}
         total = len(model_names)
 
         for i, name in enumerate(model_names):
+            if not isinstance(name, str) or not name.strip():
+                results[name if isinstance(name, str) else str(name)] = False
+                continue
+
+            name = name.strip()
+
             if progress_callback:
                 progress_callback(name, i + 1, total)
 
-            cached_path = self.get(name)
+            try:
+                cached_path = self.get(name)
+            except ValidationError:
+                results[name] = False
+                continue
+
             if cached_path and cached_path.exists():
                 try:
                     # Load into memory cache
                     with open(cached_path, 'rb') as f:
                         self._warm_models[name] = f.read()
                     results[name] = True
-                except IOError:
+                except OSError:
                     results[name] = False
             else:
                 results[name] = False
@@ -1011,7 +1245,7 @@ class ModelCache:
         Returns:
             Dict with validation results for each model.
         """
-        results = {"valid": [], "corrupted": [], "missing": []}
+        results: Dict[str, Any] = {"valid": [], "corrupted": [], "missing": []}
 
         with self._lock:
             for name, entry in list(self._entries.items()):
@@ -1029,7 +1263,7 @@ class ModelCache:
                     else:
                         results["corrupted"].append(name)
                         self._remove_entry(name)
-                except IOError:
+                except OSError:
                     results["corrupted"].append(name)
                     self._remove_entry(name)
 

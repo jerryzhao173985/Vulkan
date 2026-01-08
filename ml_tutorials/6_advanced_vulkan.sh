@@ -1,8 +1,24 @@
 #!/bin/bash
 # Tutorial 6: Advanced Vulkan Features for ML
 
+set -e  # Exit on error
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SDK="$(cd "$SCRIPT_DIR/.." && pwd)/builds/ARM-ML-SDK-Complete"
+export DYLD_LIBRARY_PATH=/usr/local/lib:$SDK/lib
+
 echo "=== Tutorial 6: Advanced Vulkan Features ==="
 echo ""
+
+# Clear PYTHONPATH to avoid Auto-Claude numpy conflicts
+unset PYTHONPATH
+
+# Validate SDK exists
+if [ ! -d "$SDK" ]; then
+    echo "ERROR: SDK not found at $SDK"
+    echo "Please run ./scripts/build/build_all.sh first"
+    exit 1
+fi
 
 python3 << 'EOF'
 print("Advanced Vulkan Features for ML Acceleration:")
@@ -224,12 +240,32 @@ print("   8. Use subgroup ops for reductions")
 print("")
 EOF
 
+# Verify key shaders exist
 echo ""
+echo "Verifying SDK shaders:"
+echo "======================"
+shader_count=0
+if [ -d "$SDK/shaders" ]; then
+    for shader in "add.spv" "matmul.spv" "relu.spv" "conv2d.spv"; do
+        if [ -f "$SDK/shaders/$shader" ]; then
+            echo "  ✓ $shader"
+            shader_count=$((shader_count + 1))
+        else
+            echo "  ✗ $shader (not found)"
+        fi
+    done
+    total_shaders=$(ls -1 "$SDK/shaders/"*.spv 2>/dev/null | wc -l | tr -d ' ')
+    echo "  Total shaders available: $total_shaders"
+else
+    echo "  WARNING: Shaders directory not found at $SDK/shaders"
+fi
+echo ""
+
 echo "To explore shaders in SDK:"
-echo "  ls builds/ARM-ML-SDK-Complete/shaders/"
+echo "  ls $SDK/shaders/"
 echo ""
 echo "To run with profiling:"
-echo "  ./builds/ARM-ML-SDK-Complete/bin/scenario-runner \\"
+echo "  $SDK/bin/scenario-runner \\"
 echo "      --scenario test.json \\"
 echo "      --profiling-dump-path /tmp/profile.json \\"
 echo "      --pipeline-caching"
@@ -241,5 +277,8 @@ echo "  3. Benchmarking"
 echo "  4. Style transfer"
 echo "  5. Optimizations"
 echo "  6. Advanced Vulkan (this tutorial)"
+echo "  7. New models"
+echo ""
+echo "Next: Run './ml_tutorials/7_new_models.sh' for model architectures"
 echo ""
 echo "Ready to build your ML pipeline!"

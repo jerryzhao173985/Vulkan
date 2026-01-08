@@ -1,8 +1,9 @@
 #!/bin/bash
 # ARM ML SDK - Comprehensive Feature Demonstration
 # Showcases all SDK features including Vulkan 1.4, new ML models, and advanced tooling
+# shellcheck disable=SC2034  # Color variables are used via indirection
 
-set -e
+set -euo pipefail
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -15,9 +16,9 @@ NC='\033[0m'
 # SDK paths
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK="$ROOT_DIR/builds/ARM-ML-SDK-Complete"
-export DYLD_LIBRARY_PATH=/usr/local/lib:$SDK/lib
+export DYLD_LIBRARY_PATH="/usr/local/lib:$SDK/lib:${DYLD_LIBRARY_PATH:-}"
 export PATH="$SDK/bin:$PATH"
-export VK_LAYER_PATH="$SDK/lib:$VK_LAYER_PATH"
+export VK_LAYER_PATH="$SDK/lib:${VK_LAYER_PATH:-}"
 
 echo -e "${BLUE}╔═══════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║       ARM ML SDK - Complete Feature Demonstration         ║${NC}"
@@ -34,10 +35,10 @@ echo -e "${BLUE}═════════════════════�
 echo ""
 
 # Get component counts
-MODEL_COUNT=$(ls -1 $SDK/models/*.tflite 2>/dev/null | wc -l | tr -d ' ')
-SHADER_COUNT=$(ls -1 $SDK/shaders/*.spv 2>/dev/null | wc -l | tr -d ' ')
-TOOL_COUNT=$(ls -1 $SDK/tools/*.py 2>/dev/null | wc -l | tr -d ' ')
-TUTORIAL_COUNT=$(ls -1 $ROOT_DIR/ml_tutorials/*.sh 2>/dev/null | wc -l | tr -d ' ')
+MODEL_COUNT=$(ls -1 "$SDK/models"/*.tflite 2>/dev/null | wc -l | tr -d ' ')
+SHADER_COUNT=$(ls -1 "$SDK/shaders"/*.spv 2>/dev/null | wc -l | tr -d ' ')
+TOOL_COUNT=$(ls -1 "$SDK/tools"/*.py 2>/dev/null | wc -l | tr -d ' ')
+TUTORIAL_COUNT=$(ls -1 "$ROOT_DIR/ml_tutorials"/*.sh 2>/dev/null | wc -l | tr -d ' ')
 
 echo -e "${CYAN}Core Components:${NC}"
 if [ -f "$SDK/bin/scenario-runner" ]; then
@@ -96,7 +97,7 @@ echo -e "${BLUE}═════════════════════�
 echo ""
 
 echo -e "${CYAN}Version Check:${NC}"
-$SDK/bin/scenario-runner --version 2>&1 || echo -e "  ${YELLOW}(version output unavailable)${NC}"
+"$SDK/bin/scenario-runner" --version 2>&1 || echo -e "  ${YELLOW}(version output unavailable)${NC}"
 echo ""
 
 # ============================================================================
@@ -107,7 +108,7 @@ echo -e "${BLUE}  4. Available ML Models                                   ${NC}
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 
-for model in $SDK/models/*.tflite; do
+for model in "$SDK/models"/*.tflite; do
     if [ -f "$model" ]; then
         SIZE=$(du -h "$model" | cut -f1)
         NAME=$(basename "$model" .tflite)
@@ -158,7 +159,7 @@ for shader in matmul matmul_subgroup conv2d relu sigmoid softmax maxpool; do
     fi
 done
 
-ADDITIONAL=$(ls -1 $SDK/shaders/*.spv 2>/dev/null | wc -l | tr -d ' ')
+ADDITIONAL=$(ls -1 "$SDK/shaders"/*.spv 2>/dev/null | wc -l | tr -d ' ')
 if [ "$ADDITIONAL" -gt 10 ]; then
     echo -e "  ... and $((ADDITIONAL - 10)) more shaders"
 fi
@@ -218,7 +219,7 @@ get_tutorial_desc() {
     esac
 }
 
-for tutorial in $ROOT_DIR/ml_tutorials/*.sh; do
+for tutorial in "$ROOT_DIR/ml_tutorials"/*.sh; do
     if [ -f "$tutorial" ]; then
         NAME=$(basename "$tutorial" .sh)
         DESC=$(get_tutorial_desc "$NAME")
@@ -292,7 +293,7 @@ cat > /tmp/ml_test.json << 'EOF'
 EOF
 
 echo -e "${CYAN}Testing scenario execution (dry-run):${NC}"
-$SDK/bin/scenario-runner --scenario /tmp/ml_test.json --dry-run 2>&1 | head -15 || true
+"$SDK/bin/scenario-runner" --scenario /tmp/ml_test.json --dry-run 2>&1 | head -15 || true
 echo ""
 
 # Clean up

@@ -1,8 +1,9 @@
 #!/bin/bash
 # ARM ML SDK - Unified Launcher
 # Main entry point for all SDK components with health checks and unified orchestration
+# shellcheck disable=SC2034  # Color variables are used via indirection
 
-set -e
+set -euo pipefail
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -16,8 +17,8 @@ NC='\033[0m'
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK="$ROOT_DIR/builds/ARM-ML-SDK-Complete"
 export PATH="$SDK/bin:$PATH"
-export DYLD_LIBRARY_PATH="/usr/local/lib:$SDK/lib:$DYLD_LIBRARY_PATH"
-export VK_LAYER_PATH="$SDK/lib:$VK_LAYER_PATH"
+export DYLD_LIBRARY_PATH="/usr/local/lib:$SDK/lib:${DYLD_LIBRARY_PATH:-}"
+export VK_LAYER_PATH="$SDK/lib:${VK_LAYER_PATH:-}"
 
 # Version
 VERSION="1.0.0"
@@ -88,7 +89,7 @@ health_check() {
     # Check 1: SDK directory
     if [ -d "$SDK" ]; then
         echo -e "  ${GREEN}✓${NC} SDK directory found"
-        ((checks_passed++))
+        checks_passed=$((checks_passed + 1))
     else
         echo -e "  ${RED}✗${NC} SDK directory NOT FOUND: $SDK"
         status=1
@@ -98,7 +99,7 @@ health_check() {
     if [ -f "$SDK/bin/scenario-runner" ] && [ -x "$SDK/bin/scenario-runner" ]; then
         SIZE=$(du -h "$SDK/bin/scenario-runner" | cut -f1)
         echo -e "  ${GREEN}✓${NC} scenario-runner executable ($SIZE)"
-        ((checks_passed++))
+        checks_passed=$((checks_passed + 1))
     else
         echo -e "  ${RED}✗${NC} scenario-runner NOT FOUND or not executable"
         status=1
@@ -111,7 +112,7 @@ health_check() {
     fi
     if [ "$model_count" -gt 0 ]; then
         echo -e "  ${GREEN}✓${NC} ML models available ($model_count TFLite models)"
-        ((checks_passed++))
+        checks_passed=$((checks_passed + 1))
     else
         echo -e "  ${YELLOW}⚠${NC} No ML models found"
     fi
@@ -123,7 +124,7 @@ health_check() {
     fi
     if [ "$shader_count" -gt 0 ]; then
         echo -e "  ${GREEN}✓${NC} Compute shaders available ($shader_count SPIR-V shaders)"
-        ((checks_passed++))
+        checks_passed=$((checks_passed + 1))
     else
         echo -e "  ${YELLOW}⚠${NC} No compute shaders found"
     fi
@@ -131,33 +132,34 @@ health_check() {
     # Check 5: Libraries
     local lib_count=0
     if [ -d "$SDK/lib" ]; then
-        lib_count=$(ls -1 "$SDK/lib"/*.{dylib,a,so} 2>/dev/null | wc -l | tr -d ' ')
+        # Use || true to prevent pipefail from exiting when glob doesn't match
+        lib_count=$(ls -1 "$SDK/lib"/*.dylib "$SDK/lib"/*.a "$SDK/lib"/*.so 2>/dev/null | wc -l | tr -d ' ' || true)
     fi
     if [ "$lib_count" -gt 0 ]; then
         echo -e "  ${GREEN}✓${NC} SDK libraries available ($lib_count libraries)"
-        ((checks_passed++))
+        checks_passed=$((checks_passed + 1))
     else
         echo -e "  ${YELLOW}⚠${NC} No SDK libraries (using system libraries)"
     fi
 
     # Check 6: Vulkan runtime
-    if ls /usr/local/lib/libMoltenVK* &> /dev/null 2>&1 || ls /usr/local/lib/libvulkan* &> /dev/null 2>&1; then
+    if ls /usr/local/lib/libMoltenVK* >/dev/null 2>&1 || ls /usr/local/lib/libvulkan* >/dev/null 2>&1; then
         echo -e "  ${GREEN}✓${NC} Vulkan runtime available"
-        ((checks_passed++))
+        checks_passed=$((checks_passed + 1))
     else
         echo -e "  ${YELLOW}⚠${NC} MoltenVK/Vulkan not found in /usr/local/lib"
     fi
 
     echo ""
     echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
-    if [ $status -eq 0 ]; then
+    if [ "$status" -eq 0 ]; then
         echo -e "${GREEN}✅ Health Check PASSED ($checks_passed/$checks_total checks)${NC}"
     else
         echo -e "${RED}❌ Health Check FAILED - Critical components missing${NC}"
     fi
     echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
 
-    return $status
+    return "$status"
 }
 
 # Detailed component validation
@@ -184,11 +186,11 @@ validate_components() {
                 echo -e "  ${GREEN}✓${NC} scenario-runner ($SIZE) - executable"
             else
                 echo -e "  ${YELLOW}⚠${NC} scenario-runner - not executable"
-                ((warnings++))
+                warnings=$((warnings + 1))
             fi
         else
             echo -e "  ${RED}✗${NC} scenario-runner - NOT FOUND"
-            ((errors++))
+            errors=$((errors + 1))
         fi
         echo ""
 
@@ -201,18 +203,18 @@ validate_components() {
                     SIZE=$(du -h "$model" | cut -f1)
                     NAME=$(basename "$model" .tflite)
                     echo -e "  ${GREEN}✓${NC} $NAME ($SIZE)"
-                    ((model_count++))
+                    model_count=$((model_count + 1))
                 fi
             done
-            if [ $model_count -eq 0 ]; then
+            if [ "$model_count" -eq 0 ]; then
                 echo -e "  ${YELLOW}⚠${NC} No TFLite models found"
-                ((warnings++))
+                warnings=$((warnings + 1))
             else
                 echo -e "  ${GREEN}Total:${NC} $model_count models"
             fi
         else
             echo -e "  ${RED}✗${NC} models/ directory - NOT FOUND"
-            ((errors++))
+            errors=$((errors + 1))
         fi
         echo ""
 
@@ -223,7 +225,7 @@ validate_components() {
             shader_count=$(ls -1 "$SDK/shaders"/*.spv 2>/dev/null | wc -l | tr -d ' ')
             if [ "$shader_count" -gt 0 ]; then
                 echo -e "  ${GREEN}✓${NC} Found $shader_count SPIR-V shaders"
-                ls "$SDK/shaders"/*.spv 2>/dev/null | head -5 | while read shader; do
+                ls "$SDK/shaders"/*.spv 2>/dev/null | head -5 | while read -r shader; do
                     NAME=$(basename "$shader" .spv)
                     SIZE=$(du -h "$shader" | cut -f1)
                     echo -e "    - $NAME ($SIZE)"
@@ -233,11 +235,11 @@ validate_components() {
                 fi
             else
                 echo -e "  ${YELLOW}⚠${NC} No SPIR-V shaders found"
-                ((warnings++))
+                warnings=$((warnings + 1))
             fi
         else
             echo -e "  ${RED}✗${NC} shaders/ directory - NOT FOUND"
-            ((errors++))
+            errors=$((errors + 1))
         fi
         echo ""
 
@@ -249,18 +251,18 @@ validate_components() {
                 if [ -f "$tool" ]; then
                     NAME=$(basename "$tool" .py)
                     echo -e "  ${GREEN}✓${NC} $NAME"
-                    ((tool_count++))
+                    tool_count=$((tool_count + 1))
                 fi
             done
-            if [ $tool_count -eq 0 ]; then
+            if [ "$tool_count" -eq 0 ]; then
                 echo -e "  ${YELLOW}⚠${NC} No tools found"
-                ((warnings++))
+                warnings=$((warnings + 1))
             else
                 echo -e "  ${GREEN}Total:${NC} $tool_count tools"
             fi
         else
             echo -e "  ${YELLOW}⚠${NC} tools/ directory not found"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
         echo ""
 
@@ -268,10 +270,10 @@ validate_components() {
         echo -e "${CYAN}5. Validating Libraries:${NC}"
         local lib_count=0
         if [ -d "$SDK/lib" ]; then
-            lib_count=$(ls -1 "$SDK/lib"/*.{dylib,a,so} 2>/dev/null | wc -l | tr -d ' ')
+            lib_count=$(ls -1 "$SDK/lib"/*.{dylib,a,so} 2>/dev/null | wc -l | tr -d ' ' || true)
             if [ "$lib_count" -gt 0 ]; then
                 echo -e "  ${GREEN}✓${NC} Found $lib_count libraries"
-                ls "$SDK/lib"/*.{dylib,a,so} 2>/dev/null | while read lib; do
+                ls "$SDK/lib"/*.{dylib,a,so} 2>/dev/null | while read -r lib; do
                     NAME=$(basename "$lib")
                     SIZE=$(du -h "$lib" | cut -f1)
                     echo -e "    - $NAME ($SIZE)"
@@ -281,39 +283,39 @@ validate_components() {
             fi
         else
             echo -e "  ${YELLOW}⚠${NC} lib/ directory not found"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
         echo ""
 
         # Check system dependencies
         echo -e "${CYAN}6. Checking System Dependencies:${NC}"
-        if command -v vulkaninfo &> /dev/null; then
+        if command -v vulkaninfo >/dev/null 2>&1; then
             echo -e "  ${GREEN}✓${NC} Vulkan runtime available (vulkaninfo found)"
         else
             echo -e "  ${YELLOW}⚠${NC} vulkaninfo not found (MoltenVK may still work)"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
 
-        if ls /usr/local/lib/libMoltenVK* &> /dev/null 2>&1 || ls /usr/local/lib/libvulkan* &> /dev/null 2>&1; then
+        if ls /usr/local/lib/libMoltenVK* >/dev/null 2>&1 || ls /usr/local/lib/libvulkan* >/dev/null 2>&1; then
             echo -e "  ${GREEN}✓${NC} Vulkan libraries found in /usr/local/lib"
         else
             echo -e "  ${YELLOW}⚠${NC} MoltenVK/Vulkan not found in /usr/local/lib"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
 
-        if command -v python3 &> /dev/null; then
+        if command -v python3 >/dev/null 2>&1; then
             PY_VER=$(python3 --version 2>&1)
             echo -e "  ${GREEN}✓${NC} Python3 available ($PY_VER)"
         else
             echo -e "  ${YELLOW}⚠${NC} Python3 not found (some tools may not work)"
-            ((warnings++))
+            warnings=$((warnings + 1))
         fi
         echo ""
 
         # Summary
         echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
-        if [ $errors -eq 0 ]; then
-            if [ $warnings -eq 0 ]; then
+        if [ "$errors" -eq 0 ]; then
+            if [ "$warnings" -eq 0 ]; then
                 echo -e "${GREEN}✅ Validation PASSED - All components ready${NC}"
             else
                 echo -e "${YELLOW}⚠️  Validation PASSED with $warnings warning(s)${NC}"
@@ -335,9 +337,9 @@ check_vulkan() {
 
     # Check MoltenVK
     echo -e "${CYAN}Checking MoltenVK/Vulkan Libraries:${NC}"
-    if ls /usr/local/lib/libMoltenVK* &> /dev/null 2>&1; then
+    if ls /usr/local/lib/libMoltenVK* >/dev/null 2>&1; then
         echo -e "  ${GREEN}✓${NC} MoltenVK found in /usr/local/lib"
-        ls -la /usr/local/lib/libMoltenVK* 2>/dev/null | while read line; do
+        ls -la /usr/local/lib/libMoltenVK* 2>/dev/null | while read -r line; do
             echo "    $line"
         done
     else
@@ -345,9 +347,9 @@ check_vulkan() {
     fi
     echo ""
 
-    if ls /usr/local/lib/libvulkan* &> /dev/null 2>&1; then
+    if ls /usr/local/lib/libvulkan* >/dev/null 2>&1; then
         echo -e "  ${GREEN}✓${NC} Vulkan loader found in /usr/local/lib"
-        ls -la /usr/local/lib/libvulkan* 2>/dev/null | while read line; do
+        ls -la /usr/local/lib/libvulkan* 2>/dev/null | while read -r line; do
             echo "    $line"
         done
     else
@@ -357,7 +359,7 @@ check_vulkan() {
 
     # Check vulkaninfo
     echo -e "${CYAN}Checking Vulkan Tools:${NC}"
-    if command -v vulkaninfo &> /dev/null; then
+    if command -v vulkaninfo >/dev/null 2>&1; then
         echo -e "  ${GREEN}✓${NC} vulkaninfo available"
         echo ""
         echo -e "${CYAN}Vulkan Device Info:${NC}"
@@ -505,7 +507,7 @@ launch_shell() {
     echo "  scenario-runner --version Show version"
     echo "  exit                      Exit SDK shell"
     echo ""
-    exec $SHELL
+    exec "${SHELL:-/bin/bash}"
 }
 
 # Main entry point

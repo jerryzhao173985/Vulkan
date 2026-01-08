@@ -1,7 +1,8 @@
 #!/bin/bash
 # ARM ML SDK Master Launcher with Component Validation and Unified Orchestration
+# shellcheck disable=SC2034  # Color variables are used via indirection
 
-set -e
+set -euo pipefail
 
 # Color codes for output
 GREEN='\033[0;32m'
@@ -14,8 +15,8 @@ NC='\033[0m'
 # SDK Home directory
 SDK_HOME="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$SDK_HOME/bin:$PATH"
-export DYLD_LIBRARY_PATH="/usr/local/lib:$SDK_HOME/lib:$DYLD_LIBRARY_PATH"
-export VK_LAYER_PATH="$SDK_HOME/lib:$VK_LAYER_PATH"
+export DYLD_LIBRARY_PATH="/usr/local/lib:$SDK_HOME/lib:${DYLD_LIBRARY_PATH:-}"
+export VK_LAYER_PATH="$SDK_HOME/lib:${VK_LAYER_PATH:-}"
 
 # MoltenVK detection and Vulkan runtime validation function
 check_vulkan_runtime() {
@@ -515,7 +516,7 @@ main() {
         --shell)
             show_info
             echo -e "${CYAN}Launching SDK environment shell...${NC}"
-            exec $SHELL
+            exec "${SHELL:-/bin/bash}"
             ;;
         --run)
             if [ -z "${2:-}" ]; then
@@ -544,7 +545,7 @@ main() {
         "")
             show_info
             echo -e "${CYAN}Launching SDK environment shell...${NC}"
-            exec $SHELL
+            exec "${SHELL:-/bin/bash}"
             ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"

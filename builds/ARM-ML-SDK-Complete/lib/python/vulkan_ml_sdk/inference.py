@@ -34,6 +34,7 @@ import tempfile
 import time
 import threading
 import uuid
+import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor, Future
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union, Callable
@@ -61,6 +62,11 @@ class InferenceTimeoutError(InferenceError):
 
 # Alias for backwards compatibility (but prefer InferenceTimeoutError)
 TimeoutError = InferenceTimeoutError
+
+
+class ValidationError(InferenceError):
+    """Error during input validation."""
+    pass
 
 
 class InferenceResult:
@@ -356,8 +362,14 @@ class InferenceEngine:
             Dict with model information.
 
         Raises:
+            ValidationError: If model_name is empty or not a string.
             ModelLoadError: If model cannot be loaded.
         """
+        # Validate input
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+
+        model_name = model_name.strip()
         model_path = self.get_model_path(model_name)
         if model_path is None:
             raise ModelLoadError(f"Model not found: {model_name}")
@@ -415,7 +427,7 @@ class InferenceEngine:
         Args:
             scenario: Path to scenario JSON file or scenario dict.
             output_dir: Directory for output files.
-            timeout_ms: Maximum execution time in milliseconds.
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
             dry_run: If True, validate scenario without executing.
             profiling_dump_path: Path for performance metrics output.
             pipeline_caching: If True, enable shader pipeline caching.
@@ -424,9 +436,14 @@ class InferenceEngine:
             InferenceResult with execution results.
 
         Raises:
+            ValidationError: If timeout_ms is not a positive integer.
             ExecutionError: If scenario execution fails critically.
             TimeoutError: If execution exceeds timeout.
         """
+        # Validate inputs
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+
         if not self.is_available():
             raise ExecutionError("Inference engine is not available")
 
@@ -571,16 +588,24 @@ class InferenceEngine:
         Args:
             model_name: Name of the model to use.
             inputs: Input data dictionary.
-            timeout_ms: Maximum execution time in milliseconds.
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
             profiling: If True, enable performance profiling.
 
         Returns:
             InferenceResult with inference results.
 
         Raises:
+            ValidationError: If model_name is empty or timeout_ms is invalid.
             ModelLoadError: If model is not found.
             ExecutionError: If inference fails.
         """
+        # Validate inputs
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+
+        model_name = model_name.strip()
         model_path = self.get_model_path(model_name)
         if model_path is None:
             raise ModelLoadError(f"Model not found: {model_name}")
@@ -820,20 +845,31 @@ class InferenceFuture:
 
         Args:
             timeout: Maximum time to wait in seconds. None for no limit.
+                     Must be a non-negative number if provided.
 
         Returns:
             InferenceResult from the inference operation.
 
         Raises:
+            ValidationError: If timeout is negative.
             InferenceTimeoutError: If timeout is exceeded.
             InferenceError: If inference failed.
         """
+        # Validate timeout
+        if timeout is not None and (not isinstance(timeout, (int, float)) or timeout < 0):
+            raise ValidationError(f"timeout must be a non-negative number, got {timeout}")
+
         try:
             return self._future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(f"Inference timed out after {timeout}s")
+        except concurrent.futures.CancelledError:
+            raise ExecutionError("Inference was cancelled")
         except Exception as e:
-            if "timed out" in str(e).lower():
-                raise InferenceTimeoutError(f"Inference timed out after {timeout}s")
-            raise
+            # Re-raise if it's already an InferenceError subclass
+            if isinstance(e, InferenceError):
+                raise
+            raise ExecutionError(f"Inference failed: {e}")
 
     def done(self) -> bool:
         """
@@ -933,8 +969,15 @@ class AsyncInference:
         Args:
             engine: Existing InferenceEngine instance to use.
             sdk_root: SDK root path (used if engine not provided).
-            max_workers: Maximum number of concurrent inference threads.
+            max_workers: Maximum number of concurrent inference threads (must be > 0).
+
+        Raises:
+            ValidationError: If max_workers is not a positive integer.
         """
+        # Validate max_workers
+        if not isinstance(max_workers, int) or max_workers <= 0:
+            raise ValidationError(f"max_workers must be a positive integer, got {max_workers}")
+
         if engine is not None:
             self._engine = engine
         else:
@@ -978,7 +1021,7 @@ class AsyncInference:
         Args:
             model_name: Name of the model to use.
             inputs: Input data dictionary.
-            timeout_ms: Maximum execution time in milliseconds.
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
             profiling: If True, enable performance profiling.
             callback: Optional callback for successful completion.
             error_callback: Optional callback for errors.
@@ -987,9 +1030,18 @@ class AsyncInference:
             InferenceFuture for tracking the inference operation.
 
         Raises:
+            ValidationError: If model_name is empty or timeout_ms is invalid.
             RuntimeError: If engine is shut down.
             ModelLoadError: If model is not found.
         """
+        # Validate inputs
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+
+        model_name = model_name.strip()
+
         if self._shutdown:
             raise RuntimeError("AsyncInference has been shut down")
 
@@ -1045,14 +1097,23 @@ class AsyncInference:
 
         Args:
             requests: List of (model_name, inputs) tuples.
-            timeout_ms: Maximum execution time per inference.
+            timeout_ms: Maximum execution time per inference (must be > 0).
             profiling: If True, enable performance profiling.
             callback: Optional callback for each successful completion.
             error_callback: Optional callback for each error.
 
         Returns:
             List of InferenceFutures for tracking each operation.
+
+        Raises:
+            ValidationError: If requests is not a list or timeout_ms is invalid.
         """
+        # Validate inputs
+        if not isinstance(requests, list):
+            raise ValidationError("requests must be a list")
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+
         futures = []
         for request in requests:
             if isinstance(request, tuple) and len(request) >= 1:
@@ -1087,13 +1148,21 @@ class AsyncInference:
         Args:
             scenario: Path to scenario JSON or scenario dict.
             output_dir: Directory for output files.
-            timeout_ms: Maximum execution time in milliseconds.
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
             callback: Optional callback for successful completion.
             error_callback: Optional callback for errors.
 
         Returns:
             InferenceFuture for tracking the scenario execution.
+
+        Raises:
+            ValidationError: If timeout_ms is not a positive integer.
+            RuntimeError: If engine is shut down.
         """
+        # Validate inputs
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+
         if self._shutdown:
             raise RuntimeError("AsyncInference has been shut down")
 
@@ -1200,14 +1269,20 @@ class AsyncInference:
         Args:
             futures: List of futures to wait for. If None, waits for
                      all pending tasks.
-            timeout: Maximum time to wait in seconds.
+            timeout: Maximum time to wait in seconds. Must be non-negative
+                     if provided.
 
         Returns:
             List of InferenceResults in the same order as futures.
 
         Raises:
+            ValidationError: If timeout is negative.
             InferenceTimeoutError: If timeout is exceeded.
         """
+        # Validate timeout
+        if timeout is not None and (not isinstance(timeout, (int, float)) or timeout < 0):
+            raise ValidationError(f"timeout must be a non-negative number, got {timeout}")
+
         if futures is None:
             with self._lock:
                 futures = list(self._pending_tasks.values())

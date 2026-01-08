@@ -10,7 +10,7 @@ import os
 import json
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, TYPE_CHECKING
+from typing import Dict, List, Optional, Any, Union, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .inference import InferenceEngine, InferenceResult
@@ -24,6 +24,11 @@ class SDKError(Exception):
 
 class ScenarioRunnerError(SDKError):
     """Error during scenario-runner execution."""
+    pass
+
+
+class ValidationError(SDKError):
+    """Error during input validation."""
     pass
 
 
@@ -84,12 +89,17 @@ class LoadedModel:
 
         Args:
             inputs: Input data dictionary.
-            timeout_ms: Maximum execution time in milliseconds.
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
             profiling: If True, enable performance profiling.
 
         Returns:
             InferenceResult with inference results.
+
+        Raises:
+            ValidationError: If timeout_ms is not a positive integer.
         """
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
         return self._engine.infer(
             model_name=self._name,
             inputs=inputs,
@@ -275,7 +285,14 @@ class SDK:
 
         Returns:
             Path to the model file, or None if not found.
+
+        Raises:
+            ValidationError: If model_name is empty or not a string.
         """
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+
+        model_name = model_name.strip()
         if not model_name.endswith(".tflite"):
             model_name = f"{model_name}.tflite"
 
@@ -291,7 +308,14 @@ class SDK:
 
         Returns:
             Path to the shader file, or None if not found.
+
+        Raises:
+            ValidationError: If shader_name is empty or not a string.
         """
+        if not isinstance(shader_name, str) or not shader_name.strip():
+            raise ValidationError("shader_name must be a non-empty string")
+
+        shader_name = shader_name.strip()
         if not shader_name.endswith(".spv"):
             shader_name = f"{shader_name}.spv"
 
@@ -316,14 +340,19 @@ class SDK:
             dry_run: If True, validate scenario without executing.
             profiling_dump_path: Path for performance metrics output.
             pipeline_caching: If True, enable shader pipeline caching.
-            timeout: Maximum execution time in seconds.
+            timeout: Maximum execution time in seconds (must be > 0).
 
         Returns:
             Dict with execution results including returncode, stdout, stderr.
 
         Raises:
             ScenarioRunnerError: If scenario execution fails.
+            ValidationError: If timeout is not a positive integer.
         """
+        # Validate inputs
+        if not isinstance(timeout, int) or timeout <= 0:
+            raise ValidationError(f"timeout must be a positive integer, got {timeout}")
+
         # Handle scenario as dict - write to temp file
         temp_scenario_file = None
         if isinstance(scenario, dict):
@@ -449,6 +478,7 @@ class SDK:
             LoadedModel object for running inference.
 
         Raises:
+            ValidationError: If model_name is empty or not a string.
             SDKError: If model cannot be loaded.
 
         Example:
@@ -456,6 +486,12 @@ class SDK:
             model = sdk.load_model("mobilenet_v2")
             result = model.infer({"input": data})
         """
+        # Validate model_name
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+
+        model_name = model_name.strip()
+
         # Check if already loaded
         if model_name in self._loaded_models:
             return self._loaded_models[model_name]
@@ -479,11 +515,20 @@ class SDK:
 
         Returns:
             True if model was unloaded, False if not found.
+
+        Raises:
+            ValidationError: If model_name is empty or not a string.
         """
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+
+        model_name = model_name.strip()
+
         if model_name in self._loaded_models:
             del self._loaded_models[model_name]
-            engine = self._get_inference_engine()
-            engine.unload_model(model_name)
+            # Only call engine.unload_model if inference engine was already created
+            if self._inference_engine is not None:
+                self._inference_engine.unload_model(model_name)
             return True
         return False
 
@@ -496,8 +541,14 @@ class SDK:
 
         Returns:
             True if model is loaded, False otherwise.
+
+        Raises:
+            ValidationError: If model_name is empty or not a string.
         """
-        return model_name in self._loaded_models
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+
+        return model_name.strip() in self._loaded_models
 
     def get_loaded_models(self) -> List[str]:
         """
@@ -525,22 +576,29 @@ class SDK:
         Args:
             model_name: Name of the model to use.
             inputs: Input data dictionary.
-            timeout_ms: Maximum execution time in milliseconds.
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
             profiling: If True, enable performance profiling.
 
         Returns:
             InferenceResult with inference results.
 
         Raises:
+            ValidationError: If model_name is empty or timeout_ms is invalid.
             SDKError: If inference fails.
 
         Example:
             sdk = SDK()
             result = sdk.infer("mobilenet_v2", {"input": image_data})
         """
+        # Validate inputs
+        if not isinstance(model_name, str) or not model_name.strip():
+            raise ValidationError("model_name must be a non-empty string")
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+
         engine = self._get_inference_engine()
         return engine.infer(
-            model_name=model_name,
+            model_name=model_name.strip(),
             inputs=inputs,
             timeout_ms=timeout_ms,
             profiling=profiling
@@ -549,6 +607,9 @@ class SDK:
     # =========================================================================
     # Pipeline Methods
     # =========================================================================
+
+    # Valid execution strategies for pipelines
+    VALID_EXECUTION_STRATEGIES = ("sequential", "parallel")
 
     def create_pipeline(
         self,
@@ -570,6 +631,9 @@ class SDK:
         Returns:
             New Pipeline instance.
 
+        Raises:
+            ValidationError: If execution_strategy is invalid.
+
         Example:
             sdk = SDK()
             pipeline = sdk.create_pipeline("image_classifier")
@@ -580,6 +644,12 @@ class SDK:
                 outputs=["predictions"]
             ))
         """
+        if execution_strategy not in self.VALID_EXECUTION_STRATEGIES:
+            raise ValidationError(
+                f"execution_strategy must be one of {self.VALID_EXECUTION_STRATEGIES}, "
+                f"got '{execution_strategy}'"
+            )
+
         from .pipeline import Pipeline
         return Pipeline(
             name=name,
@@ -710,8 +780,8 @@ class SDK:
                    - path to image file (str or Path)
                    - dict with "data" key containing image data
             model: Classification model name. Defaults to "mobilenet_v2".
-            top_k: Number of top predictions to return.
-            timeout_ms: Maximum execution time in milliseconds.
+            top_k: Number of top predictions to return (must be >= 1).
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
 
         Returns:
             Dict containing:
@@ -720,6 +790,10 @@ class SDK:
                 - "confidence": Confidence score for top class
                 - "execution_time_ms": Time taken for inference
                 - "model": Model name used
+
+        Raises:
+            ValidationError: If image is None, top_k < 1, or timeout_ms <= 0.
+            SDKError: If model not found or inference fails.
 
         Example:
             sdk = SDK()
@@ -735,6 +809,14 @@ class SDK:
             print(f"Top class: {result['top_class']}")
             print(f"Confidence: {result['confidence']:.2%}")
         """
+        # Validate inputs
+        if image is None:
+            raise ValidationError("image cannot be None")
+        if not isinstance(top_k, int) or top_k < 1:
+            raise ValidationError(f"top_k must be a positive integer >= 1, got {top_k}")
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+
         # Use default model if not specified
         model_name = model or self.DEFAULT_CLASSIFICATION_MODEL
 
@@ -764,7 +846,7 @@ class SDK:
         self,
         image: Any,
         style: str = "la_muse",
-        output_size: Optional[tuple] = None,
+        output_size: Optional[Tuple[int, int]] = None,
         timeout_ms: int = 300000
     ) -> Dict[str, Any]:
         """
@@ -787,8 +869,8 @@ class SDK:
                    - dict with "data" key containing image data
             style: Style model name. Defaults to "la_muse".
             output_size: Optional (width, height) tuple for output size.
-                        If None, uses input image size.
-            timeout_ms: Maximum execution time in milliseconds.
+                        If None, uses input image size. Both values must be > 0.
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
 
         Returns:
             Dict containing:
@@ -798,6 +880,11 @@ class SDK:
                 - "output_size": Output image size
                 - "execution_time_ms": Time taken for inference
                 - "output_path": Path to output file (if saved)
+
+        Raises:
+            ValidationError: If image is None, style is empty, output_size is invalid,
+                           or timeout_ms <= 0.
+            SDKError: If style model not found or inference fails.
 
         Example:
             sdk = SDK()
@@ -815,6 +902,24 @@ class SDK:
             print(f"Style: {result['style']}")
             print(f"Time: {result['execution_time_ms']:.0f}ms")
         """
+        # Validate inputs
+        if image is None:
+            raise ValidationError("image cannot be None")
+        if not isinstance(style, str) or not style.strip():
+            raise ValidationError("style must be a non-empty string")
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+        if output_size is not None:
+            if (not isinstance(output_size, (tuple, list)) or
+                len(output_size) != 2 or
+                not all(isinstance(x, int) and x > 0 for x in output_size)):
+                raise ValidationError(
+                    f"output_size must be a tuple of 2 positive integers (width, height), "
+                    f"got {output_size}"
+                )
+
+        style = style.strip()
+
         # Validate style model exists
         model_path = self.get_model_path(style)
         if model_path is None:
@@ -925,7 +1030,7 @@ class SDK:
         result: "InferenceResult",
         style: str,
         original_image: Any,
-        output_size: Optional[tuple]
+        output_size: Optional[Tuple[int, int]]
     ) -> Dict[str, Any]:
         """
         Format inference result as style transfer output.
@@ -1017,13 +1122,17 @@ def classify(
     Args:
         image: Input image data (numpy array, file path, or dict).
         model: Classification model name. Defaults to "mobilenet_v2".
-        top_k: Number of top predictions to return.
-        timeout_ms: Maximum execution time in milliseconds.
+        top_k: Number of top predictions to return (must be >= 1).
+        timeout_ms: Maximum execution time in milliseconds (must be > 0).
         sdk: Optional SDK instance to use. Creates default if not provided.
 
     Returns:
         Dict with classification results including predictions, top_class,
         confidence, and execution_time_ms.
+
+    Raises:
+        ValidationError: If image is None, top_k < 1, or timeout_ms <= 0.
+        SDKError: If model not found or inference fails.
 
     Example:
         import vulkan_ml_sdk as vms
@@ -1047,7 +1156,7 @@ def classify(
 def style_transfer(
     image: Any,
     style: str = "la_muse",
-    output_size: Optional[tuple] = None,
+    output_size: Optional[Tuple[int, int]] = None,
     timeout_ms: int = 300000,
     sdk: Optional[SDK] = None
 ) -> Dict[str, Any]:
@@ -1068,12 +1177,17 @@ def style_transfer(
         image: Input image data (numpy array, file path, or dict).
         style: Style model name. Defaults to "la_muse".
         output_size: Optional (width, height) tuple for output size.
-        timeout_ms: Maximum execution time in milliseconds.
+        timeout_ms: Maximum execution time in milliseconds (must be > 0).
         sdk: Optional SDK instance to use. Creates default if not provided.
 
     Returns:
         Dict with style transfer results including stylized_image, style,
         input_size, output_size, and execution_time_ms.
+
+    Raises:
+        ValidationError: If image is None, style is empty, output_size is invalid,
+                       or timeout_ms <= 0.
+        SDKError: If style model not found or inference fails.
 
     Example:
         import vulkan_ml_sdk as vms

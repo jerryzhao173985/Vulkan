@@ -6,12 +6,28 @@
  * Implements: y = (x - mean) / sqrt(variance + epsilon) * gamma + beta
  * Where mean and variance are computed over the last dimension (norm_size)
  * For normalizing activations in transformer and other ML models
+ *
+ * Numerical Stability:
+ *   - Epsilon guard ensures variance + epsilon > 0 for safe sqrt
+ *   - Uses max() to guarantee minimum denominator value
+ *   - Division by norm_size protected against zero
+ *   - Precomputes inverse standard deviation for efficient division
+ *
+ * Bounds Checking:
+ *   - Validates all buffer indices before access
+ *   - Early return for invalid norm_size (prevents division by zero)
+ *   - Gamma/beta indices validated against norm_size
  */
 
 #version 450
 
 // Workgroup configuration - 64 threads for parallel reduction
-layout(local_size_x = 64) in;
+#define WORKGROUP_SIZE 64
+layout(local_size_x = WORKGROUP_SIZE) in;
+
+// Numerical stability constants
+#define MIN_VARIANCE_DENOM 1e-12  // Minimum denominator to prevent division by zero
+#define MIN_NORM_SIZE_F 1.0       // Minimum divisor for mean/variance computation
 
 // Input buffer: feature activations to normalize
 layout(set = 0, binding = 0) readonly buffer Input { float data[]; } input_buf;
@@ -25,18 +41,36 @@ layout(set = 0, binding = 3) writeonly buffer Output { float data[]; } output_bu
 
 // Push constants for layer norm parameters
 layout(push_constant) uniform PushConstants {
-    uint norm_size;  // Size of normalization dimension (hidden_size for transformers)
-    float epsilon;   // Small constant for numerical stability (typically 1e-5)
+    uint norm_size;   // Size of normalization dimension (hidden_size for transformers)
+    uint num_groups;  // Total number of groups to normalize (for bounds checking)
+    float epsilon;    // Small constant for numerical stability (typically 1e-5)
 } params;
 
 // Shared memory for parallel reduction
-shared float shared_sum[64];
-shared float shared_sq_sum[64];
+shared float shared_sum[WORKGROUP_SIZE];
+shared float shared_sq_sum[WORKGROUP_SIZE];
 
 void main() {
     uint local_id = gl_LocalInvocationID.x;
     uint group_id = gl_WorkGroupID.x;
+
+    // =========================================
+    // Bounds check: early return for invalid parameters
+    // =========================================
+    // Guard against norm_size being 0 (prevents division by zero)
+    if (params.norm_size == 0) {
+        return;
+    }
+
+    // Guard against out-of-bounds group index
+    if (group_id >= params.num_groups) {
+        return;
+    }
+
     uint base_idx = group_id * params.norm_size;
+
+    // Precompute buffer size limit for bounds checking
+    uint total_size = params.num_groups * params.norm_size;
 
     // =========================================
     // Step 1: Initialize shared memory
@@ -49,9 +83,13 @@ void main() {
     // Step 2: Compute partial sums for mean
     // =========================================
     float local_sum = 0.0;
-    for (uint i = local_id; i < params.norm_size; i += 64) {
-        float val = input_buf.data[base_idx + i];
-        local_sum += val;
+    for (uint i = local_id; i < params.norm_size; i += WORKGROUP_SIZE) {
+        uint idx = base_idx + i;
+        // Bounds check before buffer access
+        if (idx < total_size) {
+            float val = input_buf.data[idx];
+            local_sum += val;
+        }
     }
     shared_sum[local_id] = local_sum;
     barrier();
@@ -59,24 +97,31 @@ void main() {
     // =========================================
     // Step 3: Parallel reduction for sum
     // =========================================
-    for (uint stride = 32; stride > 0; stride >>= 1) {
+    for (uint stride = WORKGROUP_SIZE / 2; stride > 0; stride >>= 1) {
         if (local_id < stride) {
             shared_sum[local_id] += shared_sum[local_id + stride];
         }
         barrier();
     }
 
-    float mean = shared_sum[0] / float(params.norm_size);
+    // Compute mean with numerical stability (guaranteed norm_size > 0 from early check)
+    // Use max() as additional safety for float conversion edge cases
+    float norm_size_f = max(float(params.norm_size), MIN_NORM_SIZE_F);
+    float mean = shared_sum[0] / norm_size_f;
     barrier();
 
     // =========================================
     // Step 4: Compute variance (squared differences)
     // =========================================
     float local_sq_sum = 0.0;
-    for (uint i = local_id; i < params.norm_size; i += 64) {
-        float val = input_buf.data[base_idx + i];
-        float diff = val - mean;
-        local_sq_sum += diff * diff;
+    for (uint i = local_id; i < params.norm_size; i += WORKGROUP_SIZE) {
+        uint idx = base_idx + i;
+        // Bounds check before buffer access
+        if (idx < total_size) {
+            float val = input_buf.data[idx];
+            float diff = val - mean;
+            local_sq_sum += diff * diff;
+        }
     }
     shared_sq_sum[local_id] = local_sq_sum;
     barrier();
@@ -84,25 +129,42 @@ void main() {
     // =========================================
     // Step 5: Parallel reduction for variance
     // =========================================
-    for (uint stride = 32; stride > 0; stride >>= 1) {
+    for (uint stride = WORKGROUP_SIZE / 2; stride > 0; stride >>= 1) {
         if (local_id < stride) {
             shared_sq_sum[local_id] += shared_sq_sum[local_id + stride];
         }
         barrier();
     }
 
-    float variance = shared_sq_sum[0] / float(params.norm_size);
-    float inv_std = 1.0 / sqrt(variance + params.epsilon);
+    // Compute variance with numerical stability
+    float variance = shared_sq_sum[0] / norm_size_f;
+
+    // Ensure denominator is never too small to prevent overflow/NaN
+    // Using max() with epsilon provides double protection:
+    // 1. params.epsilon adds to variance (handles small variance)
+    // 2. max() ensures minimum threshold (handles numerical edge cases)
+    float variance_eps = variance + params.epsilon;
+    float denom = sqrt(max(variance_eps, MIN_VARIANCE_DENOM));
+
+    // Precompute inverse for efficiency (multiply is faster than divide)
+    float inv_std = 1.0 / denom;
     barrier();
 
     // =========================================
     // Step 6: Normalize and apply gamma/beta
     // =========================================
-    for (uint i = local_id; i < params.norm_size; i += 64) {
-        float val = input_buf.data[base_idx + i];
-        float normalized = (val - mean) * inv_std;
-        float gamma = gamma_buf.data[i];
-        float beta = beta_buf.data[i];
-        output_buf.data[base_idx + i] = normalized * gamma + beta;
+    for (uint i = local_id; i < params.norm_size; i += WORKGROUP_SIZE) {
+        uint idx = base_idx + i;
+        // Bounds check before buffer access (both input/output and gamma/beta)
+        if (idx < total_size && i < params.norm_size) {
+            float val = input_buf.data[idx];
+            float normalized = (val - mean) * inv_std;
+
+            // Gamma and beta are indexed by position within norm dimension
+            float gamma = gamma_buf.data[i];
+            float beta = beta_buf.data[i];
+
+            output_buf.data[idx] = normalized * gamma + beta;
+        }
     }
 }

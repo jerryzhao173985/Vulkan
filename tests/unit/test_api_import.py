@@ -4,6 +4,10 @@ Unit tests for vulkan_ml_sdk API import and basic functionality.
 
 Tests that the vulkan_ml_sdk package can be imported correctly and
 that core classes and functions are accessible.
+
+Can run with pytest or standalone:
+  pytest tests/unit/test_api_import.py -v
+  python3 tests/unit/test_api_import.py
 """
 
 import os
@@ -11,7 +15,13 @@ import sys
 import warnings
 from pathlib import Path
 
-import pytest
+# Try to import pytest, fall back to unittest if not available
+try:
+    import pytest
+    HAS_PYTEST = True
+except ImportError:
+    HAS_PYTEST = False
+    import unittest
 
 # Suppress deprecation warnings for version checks
 warnings.filterwarnings('ignore', category=DeprecationWarning)
@@ -479,5 +489,61 @@ class TestDataConnection:
 # Main Execution
 # ============================================================================
 
+def _run_standalone_tests():
+    """Run tests without pytest using basic assertions."""
+    import traceback
+
+    passed = 0
+    failed = 0
+    errors = []
+
+    # Test classes to run
+    test_classes = [
+        TestPackageImport,
+        TestCoreClassImports,
+        TestExceptionImports,
+        TestConvenienceFunctionImports,
+        TestModuleImports,
+        TestBasicInstantiation,
+        TestModelsModule,
+        TestInferenceModule,
+        TestPipelineModule,
+        TestSDKClass,
+        TestDataConnection,
+    ]
+
+    for test_class in test_classes:
+        print(f"\n=== {test_class.__name__} ===")
+        instance = test_class()
+
+        for method_name in dir(instance):
+            if method_name.startswith('test_'):
+                try:
+                    getattr(instance, method_name)()
+                    print(f"  [PASS] {method_name}")
+                    passed += 1
+                except Exception as e:
+                    print(f"  [FAIL] {method_name}: {e}")
+                    failed += 1
+                    errors.append((method_name, str(e)))
+
+    print("\n" + "=" * 60)
+    print(f"RESULTS: {passed} passed, {failed} failed")
+    print("=" * 60)
+
+    if failed > 0:
+        print("\nFailed tests:")
+        for name, error in errors:
+            print(f"  - {name}: {error}")
+        return 1
+    else:
+        print("\nAll tests passed!")
+        return 0
+
+
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--tb=short"])
+    if HAS_PYTEST:
+        sys.exit(pytest.main([__file__, "-v", "--tb=short"]))
+    else:
+        print("pytest not available, running standalone tests...")
+        sys.exit(_run_standalone_tests())

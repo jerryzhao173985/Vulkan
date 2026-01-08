@@ -1,12 +1,15 @@
 #!/bin/bash
 # Comprehensive Test Suite for ARM ML SDK
+# shellcheck disable=SC2034  # Color variables are used via indirection
 
 # Don't exit on first failure - we want to run all tests
-# set -e
+# Use pipefail to catch pipe failures, but avoid -e to continue on test failures
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SDK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -28,7 +31,7 @@ echo -e "${BLUE}║      ARM ML SDK - Comprehensive Test Suite                �
 echo -e "${BLUE}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-export DYLD_LIBRARY_PATH=/usr/local/lib:$SDK_ROOT/builds/ARM-ML-SDK-Complete/lib
+export DYLD_LIBRARY_PATH="/usr/local/lib:$SDK_ROOT/builds/ARM-ML-SDK-Complete/lib:${DYLD_LIBRARY_PATH:-}"
 
 # Test function
 run_test() {
@@ -84,8 +87,8 @@ echo ""
 
 # Section 4: Shader Tests
 echo -e "${CYAN}=== 4. Compute Shader Tests ===${NC}"
-SHADER_COUNT=$(ls -1 "$SHADERS"/*.spv 2>/dev/null | wc -l)
-run_test "Shader compilation ($SHADER_COUNT shaders)" "[ $SHADER_COUNT -gt 0 ]"
+SHADER_COUNT=$(ls -1 "$SHADERS"/*.spv 2>/dev/null | wc -l | tr -d ' ')
+run_test "Shader compilation ($SHADER_COUNT shaders)" "[ \"$SHADER_COUNT\" -gt 0 ]"
 run_test "Add shader" "[ -f '$SHADERS/add.spv' ]"
 run_test "Multiply shader" "[ -f '$SHADERS/multiply.spv' ]"
 echo ""
@@ -195,17 +198,17 @@ run_test "Build scripts" "[ -f '$SDK_ROOT/scripts/build/build_all.sh' ]"
 run_test "SDK complete directory" "[ -d '$SDK_ROOT/builds/ARM-ML-SDK-Complete' ]"
 echo ""
 
-# Section 11: Advanced ML Feature Tests
-echo -e "${CYAN}=== 11. Advanced ML Feature Tests ===${NC}"
-run_test "Advanced model MobileNet" "ls $MODELS/mobilenet_v2*.tflite 2>/dev/null | grep -q mobilenet"
-run_test "Advanced style transfer models" "ls $MODELS/*_*.tflite 2>/dev/null | wc -l | grep -q '[5-9]'"
+# Section 12: Advanced ML Feature Tests
+echo -e "${CYAN}=== 12. Advanced ML Feature Tests ===${NC}"
+run_test "Advanced model MobileNet" "ls \"$MODELS\"/mobilenet_v2*.tflite 2>/dev/null | grep -q mobilenet"
+run_test "Advanced style transfer models" "ls \"$MODELS\"/*_*.tflite 2>/dev/null | wc -l | grep -q '[5-9]'"
 run_test "Advanced fire detection feature" "[ -f '$MODELS/fire_detection.tflite' ]"
 run_test "Advanced model analysis tool" "[ -f '$SDK_ROOT/builds/ARM-ML-SDK-Complete/tools/analyze_tflite_model.py' ]"
 echo ""
 
-# Section 12: New Shader Feature Tests
+# Section 13: New Shader Feature Tests
 # Note: Tests check for compiled (.spv) or source (.comp) shader availability
-echo -e "${CYAN}=== 12. New Shader Feature Tests ===${NC}"
+echo -e "${CYAN}=== 13. New Shader Feature Tests ===${NC}"
 run_test "Conv2d shader (source or compiled)" "[ -f '$SHADERS/conv2d.comp' ] || [ -f '$SHADERS/optimized_conv2d.spv' ]"
 run_test "Matrix multiply shader" "[ -f '$SHADERS/matrix_multiply.spv' ] || [ -f '$SHADERS/matmul.comp' ]"
 run_test "Relu shader" "[ -f '$SHADERS/relu.spv' ]"
@@ -213,24 +216,24 @@ run_test "Sigmoid shader" "[ -f '$SHADERS/sigmoid.spv' ]"
 run_test "Pooling shader (source or compiled)" "[ -f '$SHADERS/maxpool2d.comp' ] || [ -f '$SHADERS/avgpool2d.comp' ]"
 echo ""
 
-# Section 13: Feature Validation Tests
-echo -e "${CYAN}=== 13. Feature Validation Tests ===${NC}"
+# Section 14: Feature Validation Tests
+echo -e "${CYAN}=== 14. Feature Validation Tests ===${NC}"
 run_test "Feature: SDK bin structure" "[ -d '$SDK_BIN' ] && [ -x '$SDK_BIN/scenario-runner' ]"
-run_test "Feature: Model directory structure" "[ -d '$MODELS' ] && ls $MODELS/*.tflite 2>/dev/null | wc -l | grep -q '[1-9]'"
-run_test "Feature: Shader directory structure" "[ -d '$SHADERS' ] && ls $SHADERS/*.spv 2>/dev/null | wc -l | grep -q '[1-9]'"
+run_test "Feature: Model directory structure" "[ -d '$MODELS' ] && ls \"$MODELS\"/*.tflite 2>/dev/null | wc -l | grep -q '[1-9]'"
+run_test "Feature: Shader directory structure" "[ -d '$SHADERS' ] && ls \"$SHADERS\"/*.spv 2>/dev/null | wc -l | grep -q '[1-9]'"
 run_test "Feature: SDK completeness" "[ -d '$SDK_ROOT/builds/ARM-ML-SDK-Complete/lib' ] && [ -d '$SDK_ROOT/builds/ARM-ML-SDK-Complete/tools' ]"
 echo ""
 
-# Section 14: Advanced Performance Feature Tests
-echo -e "${CYAN}=== 14. Advanced Performance Feature Tests ===${NC}"
+# Section 15: Advanced Performance Feature Tests
+echo -e "${CYAN}=== 15. Advanced Performance Feature Tests ===${NC}"
 run_test "Advanced NumPy feature" "python3 -c 'import numpy as np; a=np.zeros((1000,1000)); print(a.shape)'"
 run_test "Advanced memory feature" "python3 -c 'import sys; data=[0]*5000000; print(sys.getsizeof(data))'"
 run_test "New optimization tool" "[ -f '$SDK_ROOT/builds/ARM-ML-SDK-Complete/tools/optimize_for_apple_silicon.py' ]"
 run_test "New profiling feature" "[ -f '$SDK_ROOT/builds/ARM-ML-SDK-Complete/tools/profile_performance.py' ]"
 echo ""
 
-# Section 15: New Integration Feature Tests
-echo -e "${CYAN}=== 15. New Integration Feature Tests ===${NC}"
+# Section 16: New Integration Feature Tests
+echo -e "${CYAN}=== 16. New Integration Feature Tests ===${NC}"
 run_test "New tutorial: analyze model" "[ -f '$SDK_ROOT/ml_tutorials/1_analyze_model.sh' ]"
 run_test "New tutorial: test compute" "[ -f '$SDK_ROOT/ml_tutorials/2_test_compute.sh' ]"
 run_test "New tutorial: benchmark" "[ -f '$SDK_ROOT/ml_tutorials/3_benchmark.sh' ]"
@@ -245,7 +248,12 @@ echo -e "${MAGENTA}════════════════════�
 echo ""
 
 TOTAL=$((PASSED + FAILED + SKIPPED))
-PASS_RATE=$(echo "scale=1; $PASSED * 100 / $TOTAL" | bc)
+# Calculate pass rate using pure bash (integer percentage)
+if [ "$TOTAL" -gt 0 ]; then
+    PASS_RATE=$((PASSED * 100 / TOTAL))
+else
+    PASS_RATE=0
+fi
 
 echo "Total Tests: $TOTAL"
 echo -e "Passed: ${GREEN}$PASSED${NC}"
@@ -254,7 +262,7 @@ echo -e "Skipped: ${YELLOW}$SKIPPED${NC}"
 echo "Pass Rate: ${PASS_RATE}%"
 echo ""
 
-if [ $FAILED -eq 0 ]; then
+if [ "$FAILED" -eq 0 ]; then
     echo -e "${GREEN}✓ All tests passed!${NC}"
     echo -e "${GREEN}✓ SDK is fully operational!${NC}"
     exit 0

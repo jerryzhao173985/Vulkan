@@ -5,12 +5,26 @@
  * Batch Normalization Compute Shader
  * Implements: y = (x - mean) / sqrt(variance + epsilon) * gamma + beta
  * For normalizing activations across the batch dimension in ML models
+ *
+ * Numerical Stability:
+ *   - Epsilon guard ensures variance + epsilon > 0 for safe sqrt
+ *   - Uses max() to guarantee minimum denominator value
+ *   - Precomputes inverse standard deviation for efficient division
+ *
+ * Bounds Checking:
+ *   - Validates input index against total_size before buffer access
+ *   - Validates channel index against channel_size for statistics buffers
+ *   - Early return for out-of-bounds global indices
  */
 
 #version 450
 
 // Workgroup configuration - 64 threads for parallel processing
-layout(local_size_x = 64) in;
+#define WORKGROUP_SIZE 64
+layout(local_size_x = WORKGROUP_SIZE) in;
+
+// Numerical stability constants
+#define MIN_VARIANCE_DENOM 1e-12  // Minimum denominator to prevent division by zero
 
 // Input buffer: feature activations to normalize
 layout(set = 0, binding = 0) readonly buffer Input { float data[]; } input_buf;
@@ -36,20 +50,50 @@ layout(push_constant) uniform PushConstants {
 void main() {
     uint idx = gl_GlobalInvocationID.x;
 
-    // Bounds check to prevent out-of-bounds access
+    // =========================================
+    // Bounds check: early return for out-of-bounds
+    // =========================================
     if (idx >= params.total_size) {
         return;
     }
 
+    // =========================================
+    // Compute channel index with bounds protection
+    // =========================================
+    // Guard against channel_size being 0 (would cause division by zero)
+    if (params.channel_size == 0) {
+        return;
+    }
     uint channel = idx % params.channel_size;
 
-    // Load input value and per-channel statistics
+    // =========================================
+    // Load input value with bounds checking
+    // =========================================
     float x = input_buf.data[idx];
+
+    // =========================================
+    // Load per-channel statistics with bounds checking
+    // =========================================
+    // Channel index already validated to be < channel_size
     float mean = mean_buf.data[channel];
     float variance = var_buf.data[channel];
     float gamma = gamma_buf.data[channel];
     float beta = beta_buf.data[channel];
 
-    // Apply batch normalization: y = gamma * (x - mean) / sqrt(variance + epsilon) + beta
-    output_buf.data[idx] = (x - mean) / sqrt(variance + params.epsilon) * gamma + beta;
+    // =========================================
+    // Apply batch normalization with numerical stability
+    // =========================================
+    // Ensure denominator is never too small to prevent overflow
+    // Using max() with epsilon provides double protection:
+    // 1. params.epsilon adds to variance (handles small variance)
+    // 2. max() ensures minimum threshold (handles numerical edge cases)
+    float variance_eps = variance + params.epsilon;
+    float denom = sqrt(max(variance_eps, MIN_VARIANCE_DENOM));
+
+    // Precompute inverse for efficiency (multiply is faster than divide)
+    float inv_std = 1.0 / denom;
+
+    // Compute normalized output: y = gamma * (x - mean) * inv_std + beta
+    float normalized = (x - mean) * inv_std;
+    output_buf.data[idx] = normalized * gamma + beta;
 }

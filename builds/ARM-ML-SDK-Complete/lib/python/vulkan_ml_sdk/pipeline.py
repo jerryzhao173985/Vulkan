@@ -52,6 +52,11 @@ class PipelineError(Exception):
     pass
 
 
+class ValidationError(PipelineError):
+    """Error during input validation."""
+    pass
+
+
 class StageNotFoundError(PipelineError):
     """Raised when a pipeline stage cannot be found."""
     pass
@@ -107,8 +112,14 @@ class OptimizationConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "OptimizationConfig":
-        """Create config from dictionary."""
-        return cls(**data)
+        """Create config from dictionary, ignoring extra keys."""
+        valid_fields = {
+            "enable_quantization", "quantization_bits", "enable_fusion",
+            "fusion_patterns", "use_fp16", "use_simdgroup_operations",
+            "tile_size", "threadgroup_memory"
+        }
+        filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered_data)
 
 
 @dataclass
@@ -167,8 +178,10 @@ class PipelineStage:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PipelineStage":
-        """Create stage from dictionary."""
-        return cls(**data)
+        """Create stage from dictionary, ignoring extra keys."""
+        valid_fields = {"name", "model", "inputs", "outputs", "config", "enabled"}
+        filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered_data)
 
     def __repr__(self) -> str:
         return (
@@ -201,8 +214,10 @@ class DataConnection:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "DataConnection":
-        """Create connection from dictionary."""
-        return cls(**data)
+        """Create connection from dictionary, ignoring extra keys."""
+        valid_fields = {"source_stage", "source_output", "target_stage", "target_input", "transform"}
+        filtered_data = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered_data)
 
     def __repr__(self) -> str:
         return (
@@ -319,6 +334,8 @@ class Pipeline:
         self._lock = threading.RLock()
         self._created_at = time.time()
         self._executor: Optional[Callable] = None
+        self._optimization_config: Optional[OptimizationConfig] = None
+        self._optimization_result: Optional[OptimizationResult] = None
 
     @property
     def name(self) -> str:
@@ -370,8 +387,12 @@ class Pipeline:
             Self for method chaining.
 
         Raises:
+            ValidationError: If stage is not a PipelineStage instance.
             PipelineError: If stage name already exists.
         """
+        if not isinstance(stage, PipelineStage):
+            raise ValidationError("stage must be a PipelineStage instance")
+
         with self._lock:
             if stage.name in self._stage_map:
                 raise PipelineError(f"Stage already exists: {stage.name}")
@@ -390,7 +411,13 @@ class Pipeline:
 
         Returns:
             True if stage was removed, False if not found.
+
+        Raises:
+            ValidationError: If stage_name is empty or not a string.
         """
+        if not isinstance(stage_name, str) or not stage_name.strip():
+            raise ValidationError("stage_name must be a non-empty string")
+
         with self._lock:
             if stage_name not in self._stage_map:
                 return False
@@ -418,8 +445,12 @@ class Pipeline:
             PipelineStage object.
 
         Raises:
+            ValidationError: If stage_name is empty or not a string.
             StageNotFoundError: If stage is not found.
         """
+        if not isinstance(stage_name, str) or not stage_name.strip():
+            raise ValidationError("stage_name must be a non-empty string")
+
         with self._lock:
             if stage_name not in self._stage_map:
                 raise StageNotFoundError(f"Stage not found: {stage_name}")
@@ -434,7 +465,13 @@ class Pipeline:
 
         Returns:
             True if stage exists, False otherwise.
+
+        Raises:
+            ValidationError: If stage_name is empty or not a string.
         """
+        if not isinstance(stage_name, str) or not stage_name.strip():
+            raise ValidationError("stage_name must be a non-empty string")
+
         with self._lock:
             return stage_name in self._stage_map
 
@@ -460,9 +497,20 @@ class Pipeline:
             Self for method chaining.
 
         Raises:
+            ValidationError: If any required string parameter is empty.
             StageNotFoundError: If source or target stage doesn't exist.
             DataFlowError: If connection is invalid.
         """
+        # Validate string parameters
+        if not isinstance(source_stage, str) or not source_stage.strip():
+            raise ValidationError("source_stage must be a non-empty string")
+        if not isinstance(source_output, str) or not source_output.strip():
+            raise ValidationError("source_output must be a non-empty string")
+        if not isinstance(target_stage, str) or not target_stage.strip():
+            raise ValidationError("target_stage must be a non-empty string")
+        if not isinstance(target_input, str) or not target_input.strip():
+            raise ValidationError("target_input must be a non-empty string")
+
         with self._lock:
             # Validate stages exist
             if source_stage not in self._stage_map:
@@ -679,7 +727,12 @@ class Pipeline:
 
         Args:
             executor: Callable that executes a stage.
+
+        Raises:
+            ValidationError: If executor is not callable.
         """
+        if not callable(executor):
+            raise ValidationError("executor must be callable")
         self._executor = executor
 
     def execute(
@@ -692,14 +745,19 @@ class Pipeline:
 
         Args:
             inputs: Input data dictionary mapping input names to data.
-            timeout_ms: Maximum execution time in milliseconds.
+            timeout_ms: Maximum execution time in milliseconds (must be > 0).
 
         Returns:
             PipelineResult with execution results.
 
         Raises:
+            ValidationError: If timeout_ms is not a positive integer.
             PipelineExecutionError: If execution fails.
         """
+        # Validate timeout_ms
+        if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+            raise ValidationError(f"timeout_ms must be a positive integer, got {timeout_ms}")
+
         start_time = time.time()
         inputs = inputs or {}
 
@@ -1319,10 +1377,10 @@ class Pipeline:
             "stage_details": [],
         }
 
-        if hasattr(self, "_optimization_config"):
+        if self._optimization_config is not None:
             report["optimization_config"] = self._optimization_config.to_dict()
 
-        if hasattr(self, "_optimization_result"):
+        if self._optimization_result is not None:
             report["optimization_result"] = self._optimization_result.to_dict()
 
         for stage in self._stages:
