@@ -53,3 +53,4 @@ ai-ml-sdk-for-vulkan/build-complete
 .claude/
 .claude_settings.json
 .worktrees/
+results/
